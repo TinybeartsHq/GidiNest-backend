@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Credit Alert: New Transaction</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #f8f9fa;
+      color: #333;
+      margin: 0;
+      padding: 0;
+    }
+    .email-container {
+      max-width: 600px;
+      margin: 40px auto;
+      background-color: #ffffff;
+      padding: 30px;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+    }
+    h2 {
+      color: #b3508b; /* Soft magenta/purple */
+    }
+    .btn {
+      display: inline-block;
+      background-color: #b3508b;
+      color: #ffffff !important;
+      padding: 12px 24px;
+      margin: 24px 0;
+      border-radius: 5px;
+      text-decoration: none;
+      font-size: 16px;
+      font-weight: bold;
+    }
+    p {
+      font-size: 16px;
+      line-height: 1.6;
+    }
+    .footer {
+      font-size: 12px;
+      color: #999;
+      margin-top: 30px;
+      text-align: center;
+    }
+    .logo {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+    .logo img {
+      max-width: 120px;
+    }
+  </style>
+</head>
+<body>
+  <div class="email-container">
+    <div class="logo">
+      <!-- Optional: Add your logo here -->
+      <img src="https://app.gidinest.com/assets/icons/Logo%202.png" alt="Gidinest Logo" />
+    </div>
+    <h2>Credit Alert: You Have Received a Credit</h2>
+    <p>
+      Dear Customer,
+    </p>
+    <p>
+      We are notifying you that a new credit of <strong>{{ amount }}</strong> has been successfully deposited into your account by <strong>{{ sender_name }}</strong>.
+    </p>
+    <p>
+      You can review your account details and transaction history at any time.
+    </p>
+    <p>
+      If you did not expect this transaction or believe this is an error, please contact us immediately.
+    </p>
+    <div class="footer">
+      &copy; Gidinest. All rights reserved.
+    </div>
+  </div>
+</body>
+</html>

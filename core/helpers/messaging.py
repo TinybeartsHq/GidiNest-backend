@@ -1,0 +1,1 @@
+BVN_VALIDATION_FAILED="BVN validation service is currently not available."

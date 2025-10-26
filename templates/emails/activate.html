@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Activate Your Gidinest Account</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #f8f9fa;
+      color: #333;
+      margin: 0;
+      padding: 0;
+    }
+    .email-container {
+      max-width: 600px;
+      margin: 40px auto;
+      background-color: #ffffff;
+      padding: 30px;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+    }
+    h2 {
+      color: #b3508b; /* Soft magenta/purple */
+    }
+    .btn {
+      display: inline-block;
+      background-color: #b3508b;
+      color: #ffffff !important;
+      padding: 12px 24px;
+      margin: 24px 0;
+      border-radius: 5px;
+      text-decoration: none;
+      font-size: 16px;
+      font-weight: bold;
+    }
+    p {
+      font-size: 16px;
+      line-height: 1.6;
+    }
+    .footer {
+      font-size: 12px;
+      color: #999;
+      margin-top: 30px;
+      text-align: center;
+    }
+    .logo {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+    .logo img {
+      max-width: 120px;
+    }
+  </style>
+</head>
+<body>
+  <div class="email-container">
+    <div class="logo">
+      <!-- Optional: Add your logo here -->
+      <img src="https://app.gidinest.com/assets/icons/Logo%202.png" alt="Gidinest Logo" />
+    </div>
+    <h2>Activate Your Gidinest Account</h2>
+    <p>
+      Welcome to <strong>Gidinest</strong>, your safe and supportive space for women, expecting mothers, and nursing moms to save, grow, and plan for a better financial future.
+    </p>
+    <p>
+      You're just one step away from accessing your account.
+    </p>
+    <p style="text-align: center;">
+      <a href="{{ url }}" class="btn">Activate My Account</a>
+    </p>
+    <p>
+      If you didn’t create this account, feel free to ignore this email. The link will expire in 24 hours for your security.
+    </p>
+    <div class="footer">
+      &copy; {{ year }} Gidinest. All rights reserved.
+    </div>
+  </div>
+</body>
+</html>
