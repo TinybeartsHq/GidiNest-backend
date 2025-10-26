@@ -28,7 +28,14 @@ SECRET_KEY = os.getenv('SECRET_KEY', config('SECRET_KEY'))
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv('DEBUG', config('DEBUG', default=False, cast=bool))
 
-ALLOWED_HOSTS = ["*"]
+ALLOWED_HOSTS = [
+    "api.gidinest.com",
+    "gidinest.com",
+    "www.gidinest.com",
+    "localhost",
+    "127.0.0.1",
+    "167.99.120.170",  # Your DigitalOcean server IP
+]
 
 
 # Application definition
@@ -168,8 +175,13 @@ PREMBLY_API_KEY=os.getenv('PREMBLY_API_KEY', config('PREMBLY_API_KEY'))
 
 
 
-CORS_ALLOW_ALL_ORIGINS = True
-CORS_ORIGIN_ALLOW_ALL = True
+CORS_ALLOW_ALL_ORIGINS = False
+CORS_ALLOWED_ORIGINS = [
+    "https://gidinest.com",
+    "https://www.gidinest.com",
+    "https://app.gidinest.com",
+    "https://api.gidinest.com",
+]
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOW_HEADERS = [
     'accept',

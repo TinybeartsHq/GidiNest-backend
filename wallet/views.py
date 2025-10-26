@@ -68,9 +68,9 @@ class WalletTransactionHistoryAPIView(APIView):
     def get(self, request, *args, **kwargs):
         # Retrieve the user's wallet
         try:
-            wallet =Wallet.objects.get(user=request.user)
+            wallet = Wallet.objects.get(user=request.user)
         except Wallet.DoesNotExist:
-            success_response({"transactions":[]}) 
+            return success_response({"transactions":[]}) 
 
         # Get all transactions related to the user's wallet
         transactions = WalletTransaction.objects.filter(wallet=wallet).order_by('-created_at')
@@ -211,7 +211,6 @@ class EmbedlyWebhookView(APIView):
     def post(self, request, *args, **kwargs):
         signature = request.headers.get('x-embedly-signature')
         raw_body = request.body.decode('utf-8')
-        print(raw_body)
 
         # Check if signature or body is missing
         if not signature or not raw_body:
@@ -223,7 +222,11 @@ class EmbedlyWebhookView(APIView):
         # Compute the expected signature using HMAC and sha512
         hmac_object = hmac.new(api_key.encode('utf-8'), raw_body.encode('utf-8'), hashlib.sha512)
         computed_signature = hmac_object.hexdigest()
- 
+
+        # Verify the signature
+        if not hmac.compare_digest(computed_signature, signature):
+            return JsonResponse({'error': 'Invalid signature - authentication failed'}, status=403)
+
         # Parse the JSON payload
         try:
             payload = json.loads(raw_body)

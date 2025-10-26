@@ -76,13 +76,8 @@ class CuoralAPI:
             "message": message,
         }
 
-        print(payload)
-        print(url)
-        print(self.headers)
-
         try:
             response = requests.post(url, headers=self.headers, data=json.dumps(payload), timeout=30)
-            print(response.text)
             response.raise_for_status()
 
             return {
