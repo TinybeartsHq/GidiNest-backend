@@ -22,7 +22,7 @@ click-plugins==1.1.1
 click-repl==0.3.0
 cryptography==45.0.3
 distro==1.9.0
-Django==5.2
+Django==5.1.4
 django-cors-headers==4.3.1
 django-filter==25.1
 django_celery_results==2.6.0
@@ -99,3 +99,6 @@ websockets==15.0.1
 whitenoise==6.11.0
 yarl==1.20.0
 django-ratelimit==4.1.0
+
+gunicorn==21.2.0
+dj-database-url==2.1.0
