@@ -4,6 +4,7 @@ from typing import Optional, Dict, Any
 from django.conf import settings
 
 from core.helpers.messaging import BVN_VALIDATION_FAILED
+from providers.models import ProviderRequestLog
 
 
 class EmbedlyClient:
@@ -28,6 +29,31 @@ class EmbedlyClient:
             'Content-Type': 'application/json',
             'x-api-key': self.api_key
         }
+    
+    def _log_to_db(
+        self,
+        endpoint: str,
+        method: str,
+        request_payload: dict,
+        response: dict,
+        status_code: Optional[int] = None,
+        error: Optional[str] = None
+    ):
+        """Persist API interaction details in DB."""
+        try:
+            ProviderRequestLog.objects.create(
+                provider_name="Embedly",
+                http_method=method,
+                endpoint=endpoint,
+                request_payload=request_payload or {},
+                response_body=response or {},
+                response_status=status_code,
+                success=response.get("success", False),
+                error_message=error,
+            )
+        except Exception as e:
+            # Fallback logging in case DB logging fails
+            print(f"[DB LOGGING ERROR] Failed to log Embedly request: {e}")
 
     def _make_request(self, method: str, endpoint: str, data: Optional[Dict[str, Any]] = None, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
@@ -40,8 +66,14 @@ class EmbedlyClient:
                 method, url, headers=self.headers, data=payload, params=params, timeout=30
             )
             response.raise_for_status()
-            return response.json()
+
+            result = response.json()
+
+            self._log_to_db(endpoint, method, data, result, response.status_code)
+            return {"success": True, "data": result}
         except requests.exceptions.HTTPError as http_err:
+            self._log_to_db(endpoint, method, data, None, response.status_code, str(http_err))
+
             if(response.status_code == 401):
                 return {"success": False, "message":BVN_VALIDATION_FAILED }
             elif(response.status_code == 404):          
@@ -52,9 +84,11 @@ class EmbedlyClient:
             return {"success": False, "message": "An error occurred please try again later", "data": response.json()}
         
         except requests.exceptions.RequestException as req_err:
+            self._log_to_db(endpoint, method, data, None, None, str(req_err))
             print(f"Request error: {req_err}")
             return {"success": False, "message": f"Network error: {req_err}"}
         except json.JSONDecodeError as json_err:
+            self._log_to_db(endpoint, method, data, None, None, json_err)
             print(f"JSON decode error: {json_err} - Raw response: {response.text}")
             return {"success": False, "message": "Failed to parse API response."}
         
@@ -155,7 +189,7 @@ class EmbedlyClient:
             Returns:
                 Dict[str, Any]: The final response from the onboarding process.
         """
-        # Step 1: Create the customer
+
         customer_response = self.create_customer(**customer_data)
         if not customer_response.get("success"):
             return customer_response
@@ -163,14 +197,14 @@ class EmbedlyClient:
         customer_id = customer_response["data"]["id"]
         result = {"customer": customer_response["data"]}
 
-        # Step 2: Upgrade KYC if BVN is provided
+
         if bvn:
             kyc_response = self.upgrade_kyc(customer_id=customer_id, bvn=bvn)
             if not kyc_response.get("success"):
                 return {"success": False, "message": "KYC upgrade failed.", "details": kyc_response}
             result["kyc"] = kyc_response["data"]
 
-        # Step 3: Create a wallet if data is provided
+
         if wallet_data:
             wallet_response = self.create_wallet(
                 customer_id=customer_id,

@@ -61,6 +61,11 @@ class UpdateBVNView(APIView):
             return error_response(
                 "BVN has already been used for another account. Please log in to your other account."
             )
+        
+        if not user.embedly_customer_id:
+            success, message = self._create_embedly_customer(user, embedly_client)
+            if not success:
+                return error_response(message)
 
         res = embedly_client.upgrade_kyc(
             customer_id=user.embedly_customer_id,
@@ -134,3 +139,37 @@ class UpdateBVNView(APIView):
         user.save(update_fields=["embedly_wallet_id", "has_virtual_wallet"])
 
         return success_response("BVN Verified successfully.")
+    
+
+    def _create_embedly_customer(self, user, embedly_client):
+        """Create an Embedly customer for the user if they don’t already have one."""
+        if user.embedly_customer_id:
+            return
+
+        customer_data = {
+            "firstName": user.first_name,
+            "lastName": user.last_name,
+            "emailAddress": user.email,
+            "mobileNumber": user.phone,
+            "dob": user.dob,
+            "address": user.address,
+            "city": user.state,
+            "country": user.country,
+        }
+
+        try:
+            res = embedly_client.create_customer(customer_data)
+
+            if not res.get("success"):
+                data = res.get("data", {}).get("data", {})
+                user.embedly_customer_id = data.get("id")
+                user.save(update_fields=["embedly_customer_id"])
+                user.refresh_from_db()
+                return True, data.get("id")
+            
+            return False, "Failed to setup your wallet, please try again later."
+        except Exception as e:  
+            #TODO add logging here
+            return False, "Failed to setup your wallet, please try again later."
+
+ 
