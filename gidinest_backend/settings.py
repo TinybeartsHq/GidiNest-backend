@@ -328,3 +328,8 @@ CELERY_WORKER_MAX_TASKS_PER_CHILD = 1000
 
 # Beat scheduler settings (for periodic tasks)
 CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
+
+# Django Ratelimit Configuration
+# Fix for reverse proxy (Nginx) with Unix sockets
+RATELIMIT_IP_META_KEY = 'HTTP_X_FORWARDED_FOR'
+RATELIMIT_USE_CACHE = 'default'
