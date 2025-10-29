@@ -67,6 +67,19 @@ class UserModel(BaseModel, AbstractBaseUser,PermissionsMixin):
 
 
     has_bvn = models.BooleanField(default=False)
+
+    # NIN-related fields
+    nin = models.CharField(null=True, max_length=11, default="")
+    nin_first_name = models.CharField(null=True, max_length=200, default="")
+    nin_last_name = models.CharField(null=True, max_length=200, default="")
+    nin_phone = models.CharField(null=True, max_length=200, default="")
+    nin_dob = models.CharField(null=True, max_length=200, default="")
+    nin_gender = models.CharField(null=True, max_length=200, default="")
+    nin_marital_status = models.CharField(null=True, max_length=200, default="")
+    nin_nationality = models.CharField(null=True, max_length=200, default="")
+    nin_residential_address = models.CharField(null=True, max_length=255, default="")
+    nin_state_of_residence = models.CharField(null=True, max_length=200, default="")
+    has_nin = models.BooleanField(default=False)
     image = models.TextField(null=True, blank=True)
     account_tier = models.CharField(null=True, max_length=200,default="Tier 1")
     embedly_customer_id = models.CharField(null=True, max_length=200,default="")

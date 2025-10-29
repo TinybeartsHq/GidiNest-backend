@@ -85,7 +85,7 @@ class EmbedlyClient:
     def upgrade_kyc(self, customer_id: str, bvn: str) -> Dict[str, Any]:
         """
         Upgrades a customer's KYC using their BVN.
-        
+
         Args:
             customer_id (str): The unique ID of the customer.
             bvn (str): The 11-digit Bank Verification Number.
@@ -96,6 +96,34 @@ class EmbedlyClient:
         endpoint = "customers/kyc/premium-kyc"
         payload = {"customerId": customer_id, "bvn": bvn}
         res =  self._make_request("POST", endpoint, data=payload)
+        return res
+
+    def upgrade_kyc_nin(self, customer_id: str, nin: str, firstname: str, lastname: str, dob: str) -> Dict[str, Any]:
+        """
+        Upgrades a customer's KYC using their NIN.
+
+        Args:
+            customer_id (str): The unique ID of the customer.
+            nin (str): The 11-digit National Identification Number.
+            firstname (str): The customer's first name as stated against their NIN.
+            lastname (str): The customer's last name as stated against their NIN.
+            dob (str): The customer's date of birth (format: "1999-10-27T09").
+
+        Returns:
+            Dict[str, Any]: The API response.
+        """
+        endpoint = "customers/kyc/customer/nin"
+        params = {
+            "customerId": customer_id,
+            "nin": nin,
+            "verify": "1"
+        }
+        payload = {
+            "firstname": firstname,
+            "lastname": lastname,
+            "dob": dob
+        }
+        res = self._make_request("POST", endpoint, data=payload, params=params)
         return res
 
     def create_wallet(self, customer_id: str, name: str, phone: str) -> Dict[str, Any]:
@@ -127,6 +155,19 @@ class EmbedlyClient:
             "mobNum":phone
         }
         return self._make_request("POST", endpoint, data=payload)
+
+    def get_customer(self, customer_id: str) -> Dict[str, Any]:
+        """
+        Retrieves customer information from Embedly, including KYC status.
+
+        Args:
+            customer_id (str): The unique ID of the customer.
+
+        Returns:
+            Dict[str, Any]: The API response with customer details.
+        """
+        endpoint = f"customers/{customer_id}"
+        return self._make_request("GET", endpoint)
 
     def get_wallet_info(self, account_number: str) -> Dict[str, Any]:
         """

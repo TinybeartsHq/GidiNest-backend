@@ -46,6 +46,10 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'corsheaders',  # CORS headers support
+    'rest_framework',  # Django REST framework
+    'django_celery_beat',  # Celery periodic tasks
+    'django_celery_results',  # Celery task results
     'core',
     'account',
     'onboarding',
@@ -181,6 +185,15 @@ CORS_ALLOWED_ORIGINS = [
     "https://www.gidinest.com",
     "https://app.gidinest.com",
     "https://api.gidinest.com",
+    # Local development URLs
+    "http://localhost:3000",
+    "http://localhost:3001",
+    "http://localhost:3039",  # Your current frontend port
+    "http://localhost:5173",  # Vite default port
+    "http://127.0.0.1:3000",
+    "http://127.0.0.1:3001",
+    "http://127.0.0.1:3039",  # Your current frontend port
+    "http://127.0.0.1:5173",
 ]
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOW_HEADERS = [
@@ -191,9 +204,19 @@ CORS_ALLOW_HEADERS = [
     'origin',
     'user-agent',
     'x-csrftoken',
+    'x-requested-with',
     'api-key',
     'Access-Control-Allow-Origin',
 ]
+CORS_ALLOW_METHODS = [
+    'DELETE',
+    'GET',
+    'OPTIONS',
+    'PATCH',
+    'POST',
+    'PUT',
+]
+CORS_PREFLIGHT_MAX_AGE = 86400  # Cache preflight requests for 24 hours
 
 
 REST_FRAMEWORK = {
@@ -263,8 +286,44 @@ CSRF_TRUSTED_ORIGINS = [
     "https://gidinest.com",
     "https://www.gidinest.com",
     "https://app.gidinest.com",
-    "https://api.gidinest.com"
+    "https://api.gidinest.com",
+    # Local development
+    "http://localhost:3000",
+    "http://localhost:3001",
+    "http://localhost:3039",  # Your current frontend port
+    "http://localhost:5173",
+    "http://127.0.0.1:3000",
+    "http://127.0.0.1:3001",
+    "http://127.0.0.1:3039",  # Your current frontend port
+    "http://127.0.0.1:5173",
 ]
 
 
 PAYSTACK_SECRET_KEY=os.getenv('PAYSTACK_SECRET_KEY', config('PAYSTACK_SECRET_KEY'))
+
+
+# Celery Configuration
+# =====================
+CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', config('CELERY_BROKER_URL', default='redis://localhost:6379/0'))
+CELERY_RESULT_BACKEND = os.getenv('CELERY_RESULT_BACKEND', config('CELERY_RESULT_BACKEND', default='redis://localhost:6379/0'))
+
+# Optional: Use django-celery-results for storing task results in database
+# CELERY_RESULT_BACKEND = 'django-db'
+# CELERY_CACHE_BACKEND = 'django-cache'
+
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
+CELERY_TIMEZONE = 'UTC'
+
+# Task execution settings
+CELERY_TASK_TRACK_STARTED = True
+CELERY_TASK_TIME_LIMIT = 30 * 60  # 30 minutes max per task
+CELERY_TASK_SOFT_TIME_LIMIT = 25 * 60  # Soft limit at 25 minutes
+
+# Worker settings
+CELERY_WORKER_PREFETCH_MULTIPLIER = 1
+CELERY_WORKER_MAX_TASKS_PER_CHILD = 1000
+
+# Beat scheduler settings (for periodic tasks)
+CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
