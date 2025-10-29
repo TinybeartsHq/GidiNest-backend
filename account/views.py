@@ -161,7 +161,7 @@ class UpdateBVNView(APIView):
             res = embedly_client.create_customer(customer_data)
 
             if not res.get("success"):
-                data = res.get("data", {}).get("data", {})
+                data = res.get("data", {})
                 user.embedly_customer_id = data.get("id")
                 user.save(update_fields=["embedly_customer_id"])
                 user.refresh_from_db()

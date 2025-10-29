@@ -38,7 +38,7 @@ def create_embedly_customer(sender, instance, created, **kwargs):
         try:
             response = client.create_customer(customer_data)
             if response.get("success"):
-                embedly_customer_id = response['data']['data']['id']
+                embedly_customer_id = response['data']['id']
                 instance.embedly_customer_id = embedly_customer_id
                 instance.save(update_fields=['embedly_customer_id'])
                 print(f"Successfully created Embedly customer for user {instance.email}: {embedly_customer_id}")

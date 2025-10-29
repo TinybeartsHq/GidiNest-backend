@@ -70,7 +70,7 @@ class EmbedlyClient:
             result = response.json()
 
             self._log_to_db(endpoint, method, data, result, response.status_code)
-            return {"success": True, "data": result}
+            return {"success": True, "data": result['data']}
         except requests.exceptions.HTTPError as http_err:
             self._log_to_db(endpoint, method, data, None, response.status_code, str(http_err))
 
