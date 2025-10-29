@@ -16,9 +16,8 @@ def create_embedly_customer(sender, instance, created, **kwargs):
 
         try:
             Wallet.objects.create(user=instance)
-            print(f"Wallet created for {instance.email}")
         except Exception as e:
-            print(f"Failed to create wallet for {instance.email}: {e}")
+            pass  # Wallet creation failure is logged in DB
             
  
         client = EmbedlyClient()
@@ -41,8 +40,5 @@ def create_embedly_customer(sender, instance, created, **kwargs):
                 embedly_customer_id = response['data']['id']
                 instance.embedly_customer_id = embedly_customer_id
                 instance.save(update_fields=['embedly_customer_id'])
-                print(f"Successfully created Embedly customer for user {instance.email}: {embedly_customer_id}")
-            else:
-                print(f"Failed to create Embedly customer for user {instance.email}: {response.get('message')}")
         except Exception as e:
-            print(f"An error occurred while creating Embedly customer: {e}")
+            pass  # Errors are logged in ProviderRequestLog

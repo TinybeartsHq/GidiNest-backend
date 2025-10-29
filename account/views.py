@@ -1,3 +1,4 @@
+import json
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
@@ -77,14 +78,24 @@ class UpdateBVNView(APIView):
             return error_response(res.get("data", {}).get("message", "BVN verification failed."))
 
         data = res.get("data", {})
-        if not (data.get("successful") and data.get("kycCompleted")):
-            return error_response("BVN validation service is currently not available.")
 
+        # Check if verification was successful and KYC completed
+        if not (data.get("successful") and data.get("kycCompleted")):
+            error_msg = data.get("message", "BVN validation service is currently not available.")
+            return error_response(f"BVN verification failed: {error_msg}")
+
+        # Check verification status
         response_status = data.get("response", {}).get("status", {}).get("status")
+        response_code = data.get("response_code")
+
         if response_status != "verified":
-            if data.get("response_code") == "01":
-                return error_response("Invalid BVN provided.")
-            return error_response("BVN validation service is currently not available.")
+            if response_code == "01":
+                return error_response("Invalid BVN provided or BVN doesn't match your account details.")
+            elif response_code == "02":
+                return error_response("BVN verification failed. Please check your BVN and try again.")
+            else:
+                error_detail = data.get("response", {}).get("status", {}).get("message", "Unknown error")
+                return error_response(f"BVN verification failed: {error_detail}")
 
         # Update user BVN data
         bvn_data = data["response"]["bvn"]
@@ -108,6 +119,32 @@ class UpdateBVNView(APIView):
             return self._create_wallet_for_user(user, embedly_client)
 
         return success_response(tier_message)
+
+    def _create_embedly_customer(self, user, embedly_client):
+        """Create an Embedly customer for the user if one doesn't exist."""
+        customer_data = {
+            "firstName": user.first_name,
+            "lastName": user.last_name,
+            "emailAddress": user.email,
+            "mobileNumber": user.phone,
+            "dob": user.dob,
+            "address": user.address,
+            "city": user.state,
+            "country": user.country,
+        }
+
+        try:
+            response = embedly_client.create_customer(customer_data)
+            if response.get("success"):
+                embedly_customer_id = response['data']['id']
+                user.embedly_customer_id = embedly_customer_id
+                user.save(update_fields=['embedly_customer_id'])
+                return True, "Embedly customer created successfully"
+            else:
+                error_msg = response.get('message', 'Failed to create Embedly customer')
+                return False, error_msg
+        except Exception as e:
+            return False, f"Error creating Embedly customer: {str(e)}"
 
     def _update_user_bvn_data(self, user, bvn_data):
         """Update user's BVN-related fields after successful verification."""
@@ -138,8 +175,6 @@ class UpdateBVNView(APIView):
             phone=user.phone
         )
 
-        print(wallet_res)
-
         if not wallet_res.get("success"):
             return error_response("Failed to create virtual wallet.")
 
@@ -167,11 +202,9 @@ class UpdateNINView(APIView):
 
     def post(self, request):
         user = request.user
-        print(f"NIN Update Request Data: {request.data}")  # Debug log
         serializer = UpdateUserNINSerializer(data=request.data)
 
         if not serializer.is_valid():
-            print(f"NIN Validation Errors: {serializer.errors}")  # Debug log
             return validation_error_response(serializer.errors)
 
         embedly_client = EmbedlyClient()
@@ -185,6 +218,10 @@ class UpdateNINView(APIView):
             return error_response(
                 "NIN has already been used for another account. Please log in to your other account."
             )
+
+        # Check if user has embedly_customer_id
+        if not user.embedly_customer_id:
+            return error_response("Your account is not set up for verification. Please contact support.")
 
         # Verify NIN with Embedly
         res = embedly_client.upgrade_kyc_nin(
@@ -204,8 +241,6 @@ class UpdateNINView(APIView):
             if error_code == "-904" or "already completed this level of KYC" in error_message:
                 # User already has BVN verified, so Embedly KYC level is met
                 # We still want to store the NIN for our Tier 3 upgrade
-                print(f"Embedly KYC already completed (user has BVN), storing NIN for Tier 3 upgrade")
-
                 # Store NIN without Embedly verification data
                 user.nin = serializer.validated_data["nin"]
                 user.has_nin = True
@@ -237,14 +272,24 @@ class UpdateNINView(APIView):
                 return error_response(res.get("message", "NIN verification failed."))
 
         data = res.get("data", {})
-        if not (data.get("successful") and data.get("kycCompleted")):
-            return error_response("NIN validation service is currently not available.")
 
+        # Check if verification was successful and KYC completed
+        if not (data.get("successful") and data.get("kycCompleted")):
+            error_msg = data.get("message", "NIN validation service is currently not available.")
+            return error_response(f"NIN verification failed: {error_msg}")
+
+        # Check verification status
         response_status = data.get("response", {}).get("status", {}).get("status")
+        response_code = data.get("response_code")
+
         if response_status != "verified":
-            if data.get("response_code") == "01":
-                return error_response("Invalid NIN provided.")
-            return error_response("NIN validation service is currently not available.")
+            if response_code == "01":
+                return error_response("Invalid NIN provided or details don't match NIN record.")
+            elif response_code == "02":
+                return error_response("NIN details mismatch. Please check your firstname, lastname, and date of birth.")
+            else:
+                error_detail = data.get("response", {}).get("status", {}).get("message", "Unknown error")
+                return error_response(f"NIN verification failed: {error_detail}")
 
         # Update user NIN data with Embedly verification details
         nin_data = data["response"]["nin"]
@@ -295,8 +340,6 @@ class UpdateNINView(APIView):
             name=f"{user.first_name} {user.last_name}",
             phone=user.phone
         )
-
-        print(wallet_res)
 
         if not wallet_res.get("success"):
             return error_response("Failed to create virtual wallet.")

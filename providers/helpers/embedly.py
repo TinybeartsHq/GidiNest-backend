@@ -41,6 +41,11 @@ class EmbedlyClient:
     ):
         """Persist API interaction details in DB."""
         try:
+            # Safely check success status
+            success = False
+            if response and isinstance(response, dict):
+                success = response.get("success", False)
+
             ProviderRequestLog.objects.create(
                 provider_name="Embedly",
                 http_method=method,
@@ -48,7 +53,7 @@ class EmbedlyClient:
                 request_payload=request_payload or {},
                 response_body=response or {},
                 response_status=status_code,
-                success=response.get("success", False),
+                success=success,
                 error_message=error,
             )
         except Exception as e:
@@ -61,6 +66,8 @@ class EmbedlyClient:
         """
         url = f"{self.base_url}/{endpoint}"
         payload = json.dumps(data) if data else None
+        response = None
+
         try:
             response = requests.request(
                 method, url, headers=self.headers, data=payload, params=params, timeout=30
@@ -71,26 +78,49 @@ class EmbedlyClient:
 
             self._log_to_db(endpoint, method, data, result, response.status_code)
             return {"success": True, "data": result['data']}
+
         except requests.exceptions.HTTPError as http_err:
-            self._log_to_db(endpoint, method, data, None, response.status_code, str(http_err))
+            # Try to parse error response
+            error_data = None
+            status_code = response.status_code if response else None
 
-            if(response.status_code == 401):
-                return {"success": False, "message":BVN_VALIDATION_FAILED }
-            elif(response.status_code == 404):          
+            try:
+                if response is not None:
+                    error_data = response.json()
+            except Exception as json_error:
+                if response is not None:
+                    error_data = {"raw_response": response.text, "json_error": str(json_error)}
 
-                return {"success": False, "message": BVN_VALIDATION_FAILED}
-            elif(response.status_code == 500):
-                return {"success": False, "message": BVN_VALIDATION_FAILED}
-            return {"success": False, "message": "An error occurred please try again later", "data": response.json()}
-        
+            self._log_to_db(endpoint, method, data, error_data, status_code, str(http_err))
+
+            if status_code == 401:
+                return {"success": False, "message": BVN_VALIDATION_FAILED, "code": "401"}
+            elif status_code == 404:
+                return {"success": False, "message": BVN_VALIDATION_FAILED, "code": "404"}
+            elif status_code == 500:
+                return {"success": False, "message": BVN_VALIDATION_FAILED, "code": "500"}
+            elif status_code == 400:
+                # Bad request - return the actual error message from Embedly
+                error_msg = "Invalid request"
+                if error_data and isinstance(error_data, dict):
+                    error_msg = error_data.get('message', error_data.get('error', error_msg))
+                return {"success": False, "message": error_msg, "code": "-904", "data": error_data}
+
+            # For other errors, try to get meaningful message
+            error_msg = "An error occurred please try again later"
+            if error_data and isinstance(error_data, dict):
+                error_msg = error_data.get('message', error_data.get('error', error_msg))
+
+            return {"success": False, "message": error_msg, "data": error_data}
+
         except requests.exceptions.RequestException as req_err:
             self._log_to_db(endpoint, method, data, None, None, str(req_err))
-            print(f"Request error: {req_err}")
             return {"success": False, "message": f"Network error: {req_err}"}
+
         except json.JSONDecodeError as json_err:
-            self._log_to_db(endpoint, method, data, None, None, json_err)
-            print(f"JSON decode error: {json_err} - Raw response: {response.text}")
-            return {"success": False, "message": "Failed to parse API response."}
+            raw_text = response.text if response else "No response"
+            self._log_to_db(endpoint, method, data, None, None, str(json_err))
+            return {"success": False, "message": "Failed to parse API response.", "raw": raw_text}
         
     def create_customer(self, payload: dict = None) -> Dict[str, Any]:
         """
@@ -112,8 +142,6 @@ class EmbedlyClient:
         payload["countryId"] = settings.EMBEDLY_COUNTRY_ID_NIGERIA
         payload["alias"] =  payload['firstName']
 
-        print(payload)
- 
         return self._make_request("POST", endpoint, data=payload)
 
     def upgrade_kyc(self, customer_id: str, bvn: str) -> Dict[str, Any]:
