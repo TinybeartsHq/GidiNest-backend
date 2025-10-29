@@ -62,8 +62,12 @@ class UpdateBVNView(APIView):
             return error_response(
                 "BVN has already been used for another account. Please log in to your other account."
             )
+        
+        if not user.embedly_customer_id:
+            success, message = self._create_embedly_customer(user, embedly_client)
+            if not success:
+                return error_response(message)
 
-        # Verify BVN with Embedly
         res = embedly_client.upgrade_kyc(
             customer_id=user.embedly_customer_id,
             bvn=serializer.validated_data["bvn"]

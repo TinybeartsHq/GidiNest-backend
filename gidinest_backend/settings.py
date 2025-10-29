@@ -34,7 +34,7 @@ ALLOWED_HOSTS = [
     "www.gidinest.com",
     "localhost",
     "127.0.0.1",
-    "167.99.120.170",  # Your DigitalOcean server IP
+    "167.99.120.170",  # Your DigitalOcean server IP,
 ]
 
 
@@ -56,7 +56,8 @@ INSTALLED_APPS = [
     'notification',
     'savings',
     'wallet',
-    'community'
+    'community',
+    'providers'
 ]
 
 MIDDLEWARE = [
@@ -105,11 +106,11 @@ WSGI_APPLICATION = 'gidinest_backend.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.mysql',
-        'NAME': os.getenv('DB_NAME', config('DB_NAME')),  # Replace with your database name
-        'USER': os.getenv('DB_USER', config('DB_USER')),      # Replace with your MySQL username
-        'PASSWORD': os.getenv('DB_PASSWORD', config('DB_PASSWORD')), # Replace with your MySQL password
-        'HOST': os.getenv('DB_HOST', config('DB_HOST')),    # Or the IP address of the MySQL server
-        'PORT': '3306',         # Default MySQL port
+        'NAME': os.getenv('DB_NAME', config('DB_NAME')),  
+        'USER': os.getenv('DB_USER', config('DB_USER')),   
+        'PASSWORD': os.getenv('DB_PASSWORD', config('DB_PASSWORD')),
+        'HOST': os.getenv('DB_HOST', config('DB_HOST')), 
+        'PORT': '3306',          
     }
 }
 

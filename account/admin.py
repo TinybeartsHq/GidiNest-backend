@@ -10,7 +10,7 @@ from django.db.models import Count
 class UserAdmin(BaseUserAdmin):
     model = UserModel
     list_display = (
-        'email', 'first_name', 'last_name', 'is_verified', 'is_staff', 'is_active', 'account_tier'
+        'email','phone', 'first_name', 'last_name', 'is_verified', 'is_staff', 'is_active', 'account_tier'
     )
     list_filter = ('is_active', 'is_staff', 'is_verified', 'account_tier')
     search_fields = ('email', 'first_name', 'last_name', 'phone')
