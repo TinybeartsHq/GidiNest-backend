@@ -331,5 +331,4 @@ CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
 
 # Django Ratelimit Configuration
 # Fix for reverse proxy (Nginx) with Unix sockets
-RATELIMIT_IP_META_KEY = 'HTTP_X_FORWARDED_FOR'
 RATELIMIT_USE_CACHE = 'default'

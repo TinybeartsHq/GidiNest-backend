@@ -15,6 +15,28 @@ from notification.helper.email import MailClient
 logger = logging.getLogger(__name__)
 
 
+def get_client_ip(group, request):
+    """
+    Get the real client IP address, handling reverse proxy headers.
+    Used for rate limiting behind nginx.
+    """
+    x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+    if x_forwarded_for:
+        ip = x_forwarded_for.split(',')[0].strip()
+        return ip
+
+    x_real_ip = request.META.get('HTTP_X_REAL_IP')
+    if x_real_ip:
+        return x_real_ip
+
+    remote_addr = request.META.get('REMOTE_ADDR')
+    if remote_addr:
+        return remote_addr
+
+    # Fallback to allow rate limiting to still work
+    return '0.0.0.0'
+
+
 
 class RequestOTPView(APIView):
     """
@@ -24,7 +46,7 @@ class RequestOTPView(APIView):
     """
     permission_classes = [permissions.AllowAny]
 
-    @method_decorator(ratelimit(key='ip', rate='3/h', method='POST', block=True))
+    @method_decorator(ratelimit(key=get_client_ip, rate='3/h', method='POST', block=True))
     def post(self, request):
         serializer = RequestOTPSerializer(data=request.data)
         if serializer.is_valid():
@@ -102,7 +124,7 @@ class VerifyOTPView(APIView):
     """
     permission_classes = [permissions.AllowAny]
 
-    @method_decorator(ratelimit(key='ip', rate='10/h', method='POST', block=True))
+    @method_decorator(ratelimit(key=get_client_ip, rate='10/h', method='POST', block=True))
     def post(self, request):
         serializer = VerifyOTPSerializer(data=request.data)
         if serializer.is_valid():
@@ -135,7 +157,7 @@ class ResetPasswordView(APIView):
     """
     permission_classes = [permissions.AllowAny]
 
-    @method_decorator(ratelimit(key='ip', rate='5/h', method='POST', block=True))
+    @method_decorator(ratelimit(key=get_client_ip, rate='5/h', method='POST', block=True))
     def post(self, request):
         serializer = ResetPasswordSerializer(data=request.data)
         if serializer.is_valid():
