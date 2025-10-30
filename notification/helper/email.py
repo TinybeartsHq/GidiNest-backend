@@ -1,6 +1,9 @@
 import requests
+import logging
 from django.template.loader import render_to_string
 from django.conf import settings
+
+logger = logging.getLogger(__name__)
 
 class MailClient:
     API_URL = "https://api.zeptomail.com/v1.1/email"
@@ -16,9 +19,22 @@ class MailClient:
         }
 
     def send_email(self, to_email, subject, template_name, context=None, to_name=None):
+        """
+        Send an email using ZeptoMail API.
+
+        Returns:
+            dict: {'status': 'success', 'data': response_data} on success
+                  {'status': 'error', 'message': error_message} on failure
+        """
         context = context or {}
         try:
-            html_body = render_to_string(template_name, context)
+            # Render email template
+            try:
+                html_body = render_to_string(template_name, context)
+            except Exception as template_error:
+                error_msg = f"Failed to render email template '{template_name}': {str(template_error)}"
+                logger.error(error_msg)
+                return {'status': 'error', 'message': error_msg}
 
             payload = {
                 "from": {"address": self.from_address},
@@ -27,18 +43,35 @@ class MailClient:
                 "htmlbody": html_body
             }
 
+            # Send email via ZeptoMail API
             response = requests.post(
                 self.API_URL,
                 json=payload,
-                headers=self.headers
+                headers=self.headers,
+                timeout=10  # Add timeout to prevent hanging
             )
-            print(response.text)  # For debugging purposes
 
-            if response.status_code != 201:
-                raise Exception(f"ZeptoMail error: {response.status_code} - {response.text}")
+            logger.info(f"ZeptoMail API response for {to_email}: Status {response.status_code}")
 
-            return response.json()
+            if response.status_code == 201:
+                logger.info(f"Email sent successfully to {to_email} - Subject: {subject}")
+                return {'status': 'success', 'data': response.json()}
+            else:
+                error_msg = f"ZeptoMail API error: {response.status_code} - {response.text}"
+                logger.error(f"Failed to send email to {to_email}: {error_msg}")
+                return {'status': 'error', 'message': error_msg}
+
+        except requests.exceptions.Timeout:
+            error_msg = "Email service timeout - request took too long"
+            logger.error(f"Timeout sending email to {to_email}: {error_msg}")
+            return {'status': 'error', 'message': error_msg}
+
+        except requests.exceptions.ConnectionError:
+            error_msg = "Could not connect to email service"
+            logger.error(f"Connection error sending email to {to_email}: {error_msg}")
+            return {'status': 'error', 'message': error_msg}
+
         except Exception as e:
-            #TODO handle logging or re-raise the exception
-            print(f"Error sending email: {e}")
-            pass
+            error_msg = f"Unexpected error: {str(e)}"
+            logger.exception(f"Exception sending email to {to_email}: {error_msg}")
+            return {'status': 'error', 'message': error_msg}
