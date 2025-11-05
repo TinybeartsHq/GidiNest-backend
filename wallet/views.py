@@ -364,6 +364,143 @@ class GetBanksAPIView(APIView):
             return error_response("An error occurred while fetching banks list. Please try again.")
 
 
+class CheckWithdrawalStatusAPIView(APIView):
+    """
+    API endpoint for users to check the status of their withdrawal.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, withdrawal_id, *args, **kwargs):
+        try:
+            # Get withdrawal request
+            withdrawal = WithdrawalRequest.objects.get(
+                id=withdrawal_id,
+                user=request.user
+            )
+        except WithdrawalRequest.DoesNotExist:
+            return Response({
+                "status": False,
+                "detail": "Withdrawal request not found."
+            }, status=status.HTTP_404_NOT_FOUND)
+
+        # If already completed or failed, return current status
+        if withdrawal.status in ['completed', 'failed']:
+            return Response({
+                "status": True,
+                "detail": f"Withdrawal is {withdrawal.status}",
+                "data": {
+                    "id": withdrawal.id,
+                    "amount": withdrawal.amount,
+                    "bank_name": withdrawal.bank_name,
+                    "account_number": withdrawal.account_number,
+                    "status": withdrawal.status,
+                    "created_at": withdrawal.created_at,
+                    "updated_at": withdrawal.updated_at
+                }
+            }, status=status.HTTP_200_OK)
+
+        # If no transaction ref, still pending
+        if not withdrawal.transaction_ref:
+            return Response({
+                "status": True,
+                "detail": "Withdrawal is being processed",
+                "data": {
+                    "id": withdrawal.id,
+                    "status": "pending",
+                    "message": "Transfer has not been initiated yet"
+                }
+            }, status=status.HTTP_200_OK)
+
+        # Query Embedly for current status
+        embedly_client = EmbedlyClient()
+
+        try:
+            result = embedly_client.get_transfer_status(withdrawal.transaction_ref)
+
+            if not result.get("success"):
+                return Response({
+                    "status": False,
+                    "detail": "Unable to check withdrawal status. Please try again later."
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            # Extract status
+            transfer_data = result.get("data", {})
+            status_value = transfer_data.get("status", "").lower()
+
+            # Update withdrawal status if changed
+            if status_value in ['successful', 'success', 'completed']:
+                if withdrawal.status != 'completed':
+                    withdrawal.status = 'completed'
+                    withdrawal.save()
+
+                    # Send notification
+                    from notification.helper.email import MailClient
+                    from providers.helpers.cuoral import CuoralAPI
+
+                    cuoral_client = CuoralAPI()
+                    cuoral_client.send_sms(
+                        withdrawal.user.phone,
+                        f"Your withdrawal of NGN {withdrawal.amount} has been completed successfully."
+                    )
+
+                return Response({
+                    "status": True,
+                    "detail": "Withdrawal completed successfully",
+                    "data": {
+                        "id": withdrawal.id,
+                        "amount": withdrawal.amount,
+                        "bank_name": withdrawal.bank_name,
+                        "account_number": withdrawal.account_number,
+                        "status": "completed",
+                        "created_at": withdrawal.created_at,
+                        "completed_at": withdrawal.updated_at
+                    }
+                }, status=status.HTTP_200_OK)
+
+            elif status_value in ['failed', 'error']:
+                if withdrawal.status != 'failed':
+                    withdrawal.status = 'failed'
+                    withdrawal.error_message = transfer_data.get('message', 'Transfer failed')
+                    withdrawal.save()
+
+                    # Refund user
+                    wallet = withdrawal.user.wallet
+                    wallet.deposit(Decimal(str(withdrawal.amount)))
+
+                return Response({
+                    "status": False,
+                    "detail": f"Withdrawal failed: {withdrawal.error_message}",
+                    "data": {
+                        "id": withdrawal.id,
+                        "status": "failed",
+                        "refunded": True
+                    }
+                }, status=status.HTTP_200_OK)
+
+            else:
+                # Still processing
+                return Response({
+                    "status": True,
+                    "detail": "Withdrawal is being processed",
+                    "data": {
+                        "id": withdrawal.id,
+                        "amount": withdrawal.amount,
+                        "status": "processing",
+                        "message": "Transfer is in progress. This may take a few minutes."
+                    }
+                }, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error checking withdrawal status: {str(e)}", exc_info=True)
+
+            return Response({
+                "status": False,
+                "detail": "An error occurred while checking withdrawal status."
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
 class PayoutWebhookView(APIView):
     """
     Webhook handler for Embedly Payout (withdrawal) events.

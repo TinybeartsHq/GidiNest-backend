@@ -7,7 +7,8 @@ from .views import (
     EmbedlyWebhookView,
     PayoutWebhookView,
     WalletTransactionHistoryAPIView,
-    GetBanksAPIView
+    GetBanksAPIView,
+    CheckWithdrawalStatusAPIView
 )
 
 urlpatterns = [
@@ -16,6 +17,8 @@ urlpatterns = [
     path('history', WalletTransactionHistoryAPIView.as_view(), name='wallet_history'),
 
     path('withdraw/request', InitiateWithdrawalAPIView.as_view(), name='wallet_withdraw_request'),
+
+    path('withdraw/status/<int:withdrawal_id>', CheckWithdrawalStatusAPIView.as_view(), name='check_withdrawal_status'),
 
     path('banks', GetBanksAPIView.as_view(), name='get-banks'),
 
