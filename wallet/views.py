@@ -11,6 +11,7 @@ from django.core.exceptions import ObjectDoesNotExist
 from core.helpers.response import success_response, error_response
 from notification.helper.email import MailClient
 from providers.helpers.cuoral import CuoralAPI
+from providers.helpers.embedly import EmbedlyClient
 from savings.models import SavingsGoalModel
 from savings.serializers import SavingsGoalSerializer
 from wallet.serializers import WalletBalanceSerializer, WalletTransactionSerializer
