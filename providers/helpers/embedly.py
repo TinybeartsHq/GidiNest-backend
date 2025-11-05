@@ -119,8 +119,23 @@ class EmbedlyClient:
 
         except json.JSONDecodeError as json_err:
             raw_text = response.text if response else "No response"
-            self._log_to_db(endpoint, method, data, None, None, str(json_err))
-            return {"success": False, "message": "Failed to parse API response.", "raw": raw_text}
+            status_code = response.status_code if response else None
+
+            # Log the parsing error with status code
+            error_detail = {
+                "raw_response": raw_text,
+                "json_error": str(json_err),
+                "status_code": status_code,
+                "url": url
+            }
+            self._log_to_db(endpoint, method, data, error_detail, status_code, str(json_err))
+
+            # Return more detailed error
+            return {
+                "success": False,
+                "message": f"Failed to parse API response. Status: {status_code}, Response: {raw_text[:100] if raw_text else 'empty'}",
+                "data": error_detail
+            }
         
     def create_customer(self, payload: dict = None) -> Dict[str, Any]:
         """
