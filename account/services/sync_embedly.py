@@ -57,6 +57,7 @@ class EmbedlySyncService:
 
             # Check KYC status from Embedly
             kyc_level = customer_data.get("kycLevel", 0)
+            kyc_status = customer_data.get("kycStatus", "")
 
             # Determine verification status based on KYC level
             # Level 0 = No verification
@@ -66,27 +67,119 @@ class EmbedlySyncService:
 
             updated = False
 
-            # Sync has_bvn if we detect BVN data in embedly response
-            # Note: Embedly may not return exact BVN/NIN status, but we can infer from KYC level
-            if kyc_level >= 1 and not user.has_bvn and not user.has_nin:
-                # If KYC level is 1+, they have at least one verification
-                # We need to make an educated guess or log for manual review
-                logger.info(f"User {user.email} has KYC level {kyc_level} but local DB shows no verification")
+            # Sync BVN/NIN verification status from Embedly
+            # Check verification details from Embedly response
+            # Look for actual verification data (BVN/NIN numbers or verification flags)
 
-            # Update account tier based on KYC level
-            new_tier = self._determine_tier_from_kyc_level(kyc_level)
+            # Check if Embedly customer data has BVN or NIN info
+            customer_bvn = customer_data.get("bvn", "")
+            customer_nin = customer_data.get("nin", "")
+            verification_records = customer_data.get("verificationRecords", [])
+
+            # Sync BVN status
+            # User has BVN if: they have a BVN value in Embedly OR KYC level suggests it
+            if customer_bvn:
+                if not user.has_bvn:
+                    user.has_bvn = True
+                    changes.append("BVN verification synced from Embedly (found BVN data)")
+                    updated = True
+                    logger.info(f"User {user.email}: Set has_bvn=True (found BVN in Embedly)")
+
+            # Sync NIN status
+            # User has NIN if: they have a NIN value in Embedly
+            if customer_nin:
+                if not user.has_nin:
+                    user.has_nin = True
+                    changes.append("NIN verification synced from Embedly (found NIN data)")
+                    updated = True
+                    logger.info(f"User {user.email}: Set has_nin=True (found NIN in Embedly)")
+
+            # Fallback: If KYC level >= 2, they must have both BVN and NIN
+            # (Embedly requires both for Tier 2)
+            if kyc_level >= 2:
+                if not user.has_bvn:
+                    user.has_bvn = True
+                    changes.append("BVN verification synced (KYC Level 2+)")
+                    updated = True
+                    logger.info(f"User {user.email}: Set has_bvn=True (KYC level 2+)")
+
+                if not user.has_nin:
+                    user.has_nin = True
+                    changes.append("NIN verification synced (KYC Level 2+)")
+                    updated = True
+                    logger.info(f"User {user.email}: Set has_nin=True (KYC level 2+)")
+
+            # Fallback: If KYC level is 1 but we couldn't determine which one
+            # Log it for manual review, don't assume
+            elif kyc_level >= 1 and not user.has_bvn and not user.has_nin:
+                logger.warning(
+                    f"User {user.email} has KYC level {kyc_level} but we couldn't determine "
+                    f"if it's BVN or NIN. Manual review needed. Embedly data: {customer_data.keys()}"
+                )
+
+            # Update account tier based on actual BVN/NIN verification status
+            # Tier 1 = has BVN OR has NIN (at least one)
+            # Tier 2 = has BVN AND has NIN (both)
+            # Tier 3 = Tier 2 + address verification (based on KYC level 3)
+            new_tier = self._determine_tier_from_verification_status(
+                user.has_bvn,
+                user.has_nin,
+                kyc_level
+            )
 
             if new_tier != user.account_tier:
                 user.account_tier = new_tier
                 changes.append(f"Tier: {old_tier} -> {new_tier}")
                 updated = True
 
-            # Check wallet status
+            # Check wallet status and sync wallet details
             has_wallet = customer_data.get("hasWallet", False) or bool(customer_data.get("wallets"))
+            wallets_data = customer_data.get("wallets", [])
+
+            # Sync has_virtual_wallet flag
             if has_wallet != user.has_virtual_wallet:
                 user.has_virtual_wallet = has_wallet
                 changes.append(f"Has wallet: {user.has_virtual_wallet} -> {has_wallet}")
                 updated = True
+
+            # If Embedly says user has wallet but our DB doesn't, sync wallet details
+            if has_wallet and wallets_data:
+                from wallet.models import Wallet
+
+                try:
+                    wallet = user.wallet
+                except Wallet.DoesNotExist:
+                    wallet = None
+
+                # Get first wallet from Embedly
+                embedly_wallet = wallets_data[0]
+                wallet_id = embedly_wallet.get("id")
+                virtual_account = embedly_wallet.get("virtualAccount", {})
+                account_number = virtual_account.get("accountNumber")
+                bank_name = virtual_account.get("bankName")
+                bank_code = virtual_account.get("bankCode")
+
+                # Create or update wallet if we have account number
+                if account_number and (not wallet or not wallet.account_number):
+                    if not wallet:
+                        wallet = Wallet.objects.create(user=user)
+                        changes.append("Created wallet from Embedly data")
+                        logger.info(f"Created wallet for {user.email} from Embedly sync")
+
+                    wallet.account_name = f"{user.first_name} {user.last_name}"
+                    wallet.account_number = account_number
+                    wallet.bank = bank_name
+                    wallet.bank_code = bank_code
+                    wallet.embedly_wallet_id = wallet_id
+                    wallet.save()
+                    changes.append(f"Synced wallet details (Account: {account_number})")
+                    updated = True
+
+                    # Also update user's embedly_wallet_id
+                    if wallet_id and user.embedly_wallet_id != wallet_id:
+                        user.embedly_wallet_id = wallet_id
+                        changes.append("Synced embedly_wallet_id")
+                        updated = True
 
             if updated:
                 user.save()
@@ -200,9 +293,44 @@ class EmbedlySyncService:
 
         return results
 
+    def _determine_tier_from_verification_status(
+        self, has_bvn: bool, has_nin: bool, kyc_level: int
+    ) -> str:
+        """
+        Determine account tier based on actual BVN/NIN verification status.
+
+        Business Rules:
+        - Tier 1 = has BVN OR has NIN (at least one verified)
+        - Tier 2 = has BVN AND has NIN (both verified)
+        - Tier 3 = Tier 2 + address verification (KYC level 3)
+
+        Args:
+            has_bvn (bool): Whether user has verified BVN
+            has_nin (bool): Whether user has verified NIN
+            kyc_level (int): The KYC level from Embedly
+
+        Returns:
+            str: Account tier
+        """
+        # Tier 3 requires both verifications + address (KYC level 3)
+        if kyc_level >= 3 and has_bvn and has_nin:
+            return "Tier 3"
+
+        # Tier 2 requires both BVN and NIN
+        if has_bvn and has_nin:
+            return "Tier 2"
+
+        # Tier 1 requires at least one (BVN or NIN)
+        if has_bvn or has_nin:
+            return "Tier 1"
+
+        # Default tier for unverified users
+        return "Tier 1"
+
     def _determine_tier_from_kyc_level(self, kyc_level: int) -> str:
         """
         Determine account tier based on Embedly KYC level.
+        (Deprecated: Use _determine_tier_from_verification_status instead)
 
         Args:
             kyc_level (int): The KYC level from Embedly

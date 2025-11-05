@@ -30,6 +30,7 @@ DEBUG = os.getenv('DEBUG', config('DEBUG', default=False, cast=bool))
 
 ALLOWED_HOSTS = [
     "api.gidinest.com",
+    "app.gidinest.com",
     "gidinest.com",
     "www.gidinest.com",
     "localhost",
