@@ -168,30 +168,44 @@ class UpdateBVNView(APIView):
         ])
 
     def _create_wallet_for_user(self, user, embedly_client):
-        """Create a virtual wallet for a user if they don’t already have one."""
-        wallet_res = embedly_client.create_wallet(
-            customer_id=user.embedly_customer_id,
-            name=f"{user.first_name} {user.last_name}",
-            phone=user.phone
-        )
+        """Create a virtual wallet for a user if they don't already have one."""
+        import logging
+        logger = logging.getLogger(__name__)
 
-        if not wallet_res.get("success"):
-            return error_response("Failed to create virtual wallet.")
+        logger.info(f"Attempting to create wallet for user {user.email} (customer_id: {user.embedly_customer_id})")
 
-        data = wallet_res["data"]["virtualAccount"]
-        wallet, _ = Wallet.objects.get_or_create(user=user)
-        wallet.account_name = f"{user.first_name} {user.last_name}"
-        wallet.account_number = data.get("accountNumber")
-        wallet.bank = data.get("bankName")
-        wallet.bank_code = data.get("bankCode")
-        wallet.embedly_wallet_id = wallet_res["data"]["id"]
-        wallet.save()
+        try:
+            wallet_res = embedly_client.create_wallet(
+                customer_id=user.embedly_customer_id,
+                name=f"{user.first_name} {user.last_name}",
+                phone=user.phone
+            )
 
-        user.embedly_wallet_id = wallet_res["data"]["id"]
-        user.has_virtual_wallet = True
-        user.save(update_fields=["embedly_wallet_id", "has_virtual_wallet"])
+            if not wallet_res.get("success"):
+                error_msg = wallet_res.get("message", "Unknown error")
+                logger.error(f"Embedly wallet creation failed for {user.email}: {error_msg}")
+                return error_response(f"Failed to create virtual wallet: {error_msg}")
 
-        return success_response("BVN Verified successfully.")
+            data = wallet_res["data"]["virtualAccount"]
+            wallet, created = Wallet.objects.get_or_create(user=user)
+
+            wallet.account_name = f"{user.first_name} {user.last_name}"
+            wallet.account_number = data.get("accountNumber")
+            wallet.bank = data.get("bankName")
+            wallet.bank_code = data.get("bankCode")
+            wallet.embedly_wallet_id = wallet_res["data"]["id"]
+            wallet.save()
+
+            user.embedly_wallet_id = wallet_res["data"]["id"]
+            user.has_virtual_wallet = True
+            user.save(update_fields=["embedly_wallet_id", "has_virtual_wallet"])
+
+            logger.info(f"✓ Wallet created successfully for {user.email}: {wallet.account_number} ({wallet.bank})")
+            return success_response("BVN Verified successfully.")
+
+        except Exception as e:
+            logger.error(f"Exception during wallet creation for {user.email}: {str(e)}", exc_info=True)
+            return error_response(f"An error occurred while creating your wallet. Please contact support.")
 
 
 class UpdateNINView(APIView):
@@ -251,20 +265,27 @@ class UpdateNINView(APIView):
                     user.account_tier = "Tier 2"
                     user.save(update_fields=["account_tier"])
 
-                    success_msg = {
-                        "message": "Congratulations! You now have Tier 2 access!",
-                        "details": "Both BVN and NIN are now verified. You have unlocked higher transaction limits!",
-                        "tier": "Tier 2",
-                        "daily_limit": "₦100,000",
-                        "cumulative_limit": "₦500,000",
-                        "wallet_balance_limit": "₦500,000",
-                        "benefits": [
-                            "All Tier 1 features",
-                            "Community groups",
-                            "Higher transaction limits"
-                        ],
-                        "next_steps": "Complete address verification and upload proof of address (utility bill) to upgrade to Tier 3 (Unlimited) - coming soon"
-                    }
+                # IMPORTANT: Check if wallet needs to be created
+                # This was previously missing and caused users to not get wallets
+                if not user.has_virtual_wallet and user.embedly_customer_id:
+                    return self._create_wallet_for_user(user, embedly_client)
+
+                success_msg = {
+                    "message": "Congratulations! You now have Tier 2 access!",
+                    "details": "Both BVN and NIN are now verified. You have unlocked higher transaction limits!",
+                    "tier": "Tier 2",
+                    "daily_limit": "₦100,000",
+                    "cumulative_limit": "₦500,000",
+                    "wallet_balance_limit": "₦500,000",
+                    "benefits": [
+                        "All Tier 1 features",
+                        "Community groups",
+                        "Higher transaction limits"
+                    ],
+                    "next_steps": "Complete address verification and upload proof of address (utility bill) to upgrade to Tier 3 (Unlimited) - coming soon"
+                }
+
+                if user.has_bvn:
                     return success_response(success_msg)
 
                 return success_response("NIN added successfully!")
@@ -335,29 +356,43 @@ class UpdateNINView(APIView):
 
     def _create_wallet_for_user(self, user, embedly_client):
         """Create a virtual wallet for a user if they don't already have one."""
-        wallet_res = embedly_client.create_wallet(
-            customer_id=user.embedly_customer_id,
-            name=f"{user.first_name} {user.last_name}",
-            phone=user.phone
-        )
+        import logging
+        logger = logging.getLogger(__name__)
 
-        if not wallet_res.get("success"):
-            return error_response("Failed to create virtual wallet.")
+        logger.info(f"Attempting to create wallet for user {user.email} (customer_id: {user.embedly_customer_id})")
 
-        data = wallet_res["data"]["virtualAccount"]
-        wallet, _ = Wallet.objects.get_or_create(user=user)
-        wallet.account_name = f"{user.first_name} {user.last_name}"
-        wallet.account_number = data.get("accountNumber")
-        wallet.bank = data.get("bankName")
-        wallet.bank_code = data.get("bankCode")
-        wallet.embedly_wallet_id = wallet_res["data"]["id"]
-        wallet.save()
+        try:
+            wallet_res = embedly_client.create_wallet(
+                customer_id=user.embedly_customer_id,
+                name=f"{user.first_name} {user.last_name}",
+                phone=user.phone
+            )
 
-        user.embedly_wallet_id = wallet_res["data"]["id"]
-        user.has_virtual_wallet = True
-        user.save(update_fields=["embedly_wallet_id", "has_virtual_wallet"])
+            if not wallet_res.get("success"):
+                error_msg = wallet_res.get("message", "Unknown error")
+                logger.error(f"Embedly wallet creation failed for {user.email}: {error_msg}")
+                return error_response(f"Failed to create virtual wallet: {error_msg}")
 
-        return success_response("NIN Verified successfully.")
+            data = wallet_res["data"]["virtualAccount"]
+            wallet, created = Wallet.objects.get_or_create(user=user)
+
+            wallet.account_name = f"{user.first_name} {user.last_name}"
+            wallet.account_number = data.get("accountNumber")
+            wallet.bank = data.get("bankName")
+            wallet.bank_code = data.get("bankCode")
+            wallet.embedly_wallet_id = wallet_res["data"]["id"]
+            wallet.save()
+
+            user.embedly_wallet_id = wallet_res["data"]["id"]
+            user.has_virtual_wallet = True
+            user.save(update_fields=["embedly_wallet_id", "has_virtual_wallet"])
+
+            logger.info(f"✓ Wallet created successfully for {user.email}: {wallet.account_number} ({wallet.bank})")
+            return success_response("NIN Verified successfully.")
+
+        except Exception as e:
+            logger.error(f"Exception during wallet creation for {user.email}: {str(e)}", exc_info=True)
+            return error_response(f"An error occurred while creating your wallet. Please contact support.")
 
 
 class VerificationStatusView(APIView):
