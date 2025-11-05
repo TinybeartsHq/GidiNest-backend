@@ -259,6 +259,127 @@ class EmbedlyClient:
         endpoint = f"wallets/get/wallet/account/{account_number}"
         return self._make_request("GET", endpoint)
 
+    def get_banks(self) -> Dict[str, Any]:
+        """
+        Retrieves list of banks available for processing transfers.
+
+        Returns:
+            Dict[str, Any]: The API response with list of banks.
+            Example success response:
+            {
+                "success": True,
+                "data": [
+                    {
+                        "bankCode": "000010",
+                        "bankName": "Sterling Bank",
+                        ...
+                    }
+                ]
+            }
+        """
+        endpoint = "Payout/banks"
+        return self._make_request("GET", endpoint)
+
+    def resolve_bank_account(self, account_number: str, bank_code: str) -> Dict[str, Any]:
+        """
+        Validates external bank account and retrieves account name.
+        Bank Account Name Enquiry endpoint.
+
+        Args:
+            account_number (str): The bank account number to validate (10 digits).
+            bank_code (str): The bank code (e.g., "000010" for Sterling Bank).
+
+        Returns:
+            Dict[str, Any]: The API response with account details.
+            Example success response:
+            {
+                "success": True,
+                "data": {
+                    "accountNumber": "1111111111",
+                    "accountName": "JOHN DOE",
+                    "bankCode": "000010"
+                }
+            }
+        """
+        endpoint = "Payout/name-enquiry"
+        payload = {
+            "accountNumber": account_number,
+            "bankCode": bank_code
+        }
+        return self._make_request("POST", endpoint, data=payload)
+
+    def initiate_bank_transfer(
+        self,
+        destination_bank_code: str,
+        destination_account_number: str,
+        destination_account_name: str,
+        source_account_number: str,
+        source_account_name: str,
+        amount: int,
+        currency_id: str,
+        remarks: str = "Withdrawal",
+        webhook_url: Optional[str] = None,
+        customer_transaction_reference: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Initiates an inter-bank transfer (withdrawal/payout).
+
+        Args:
+            destination_bank_code (str): Bank code of recipient (e.g., "000010").
+            destination_account_number (str): Recipient account number (10 digits).
+            destination_account_name (str): Recipient account name.
+            source_account_number (str): Source wallet account number.
+            source_account_name (str): Source account name.
+            amount (int): Amount in kobo/cents (e.g., 100000 = NGN 1,000).
+            currency_id (str): Currency UUID.
+            remarks (str): Transaction narration/description.
+            webhook_url (str, optional): URL for transaction status webhook.
+            customer_transaction_reference (str, optional): Your reference.
+
+        Returns:
+            Dict[str, Any]: The API response with transaction reference.
+            Example success response:
+            {
+                "success": True,
+                "data": {
+                    "transactionRef": "3212-1234-5678-9101",
+                    ...
+                }
+            }
+        """
+        endpoint = "Payout/inter-bank-transfer"
+        payload = {
+            "destinationBankCode": destination_bank_code,
+            "destinationAccountNumber": destination_account_number,
+            "destinationAccountName": destination_account_name,
+            "sourceAccountNumber": source_account_number,
+            "sourceAccountName": source_account_name,
+            "amount": amount,
+            "currencyId": currency_id,
+            "remarks": remarks
+        }
+
+        if webhook_url:
+            payload["webhookUrl"] = webhook_url
+
+        if customer_transaction_reference:
+            payload["customerTransactionReference"] = customer_transaction_reference
+
+        return self._make_request("POST", endpoint, data=payload)
+
+    def get_transfer_status(self, transaction_ref: str) -> Dict[str, Any]:
+        """
+        Re-queries the status of a payout transaction.
+
+        Args:
+            transaction_ref (str): The unique transaction reference (e.g., "3212-1234-5678-9101").
+
+        Returns:
+            Dict[str, Any]: The API response with transaction status.
+        """
+        endpoint = f"Payout/status/{transaction_ref}"
+        return self._make_request("GET", endpoint)
+
     def register_and_onboard_customer(
             self, customer_data: Dict[str, Any], bvn: Optional[str] = None, wallet_data: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """

@@ -168,24 +168,10 @@ class InitiateWithdrawalAPIView(APIView):
 
 class ResolveBankAccountAPIView(APIView):
     """
-    API endpoint to resolve and fetch bank account details from Paystack.
+    API endpoint to resolve and fetch bank account details from Embedly.
+    Uses Embedly's Payout/name-enquiry endpoint.
     """
     permission_classes = [IsAuthenticated]
-
-    def get_account_details(self, account_number, bank_code):
-        """
-        Helper function to resolve bank account details from Paystack API.
-        """
-        url = f"https://api.paystack.co/bank/resolve?account_number={account_number}&bank_code={bank_code}"
-        headers = {
-            "Authorization": f"Bearer {settings.PAYSTACK_SECRET_KEY}"
-        }
-        response = requests.get(url, headers=headers)
-        
-        if response.status_code != 200:
-            return None
-        
-        return response.json()
 
     def post(self, request, *args, **kwargs):
         # Parse the input data
@@ -194,21 +180,101 @@ class ResolveBankAccountAPIView(APIView):
 
         # Validate inputs
         if not account_number or not bank_code:
-            return Response({"status":False,"detail": "Both account_number and bank_code are required."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({
+                "status": False,
+                "detail": "Both account_number and bank_code are required."
+            }, status=status.HTTP_400_BAD_REQUEST)
 
-        # Fetch and validate bank account details from Paystack
-        account_details = self.get_account_details(account_number, bank_code)
-        if not account_details:
-            return Response({"status":False,"detail": "Invalid account details."}, status=status.HTTP_400_BAD_REQUEST)
+        # Validate account number format (should be 10 digits)
+        if not account_number.isdigit() or len(account_number) != 10:
+            return Response({
+                "status": False,
+                "detail": "Account number must be exactly 10 digits."
+            }, status=status.HTTP_400_BAD_REQUEST)
 
-        # Return the resolved account details
-        return Response({
-            "status":True,
-            "detail": "Account resolved successfully.",
-            "data": account_details
-        }, status=status.HTTP_200_OK)
+        # Resolve bank account details via Embedly
+        embedly_client = EmbedlyClient()
+
+        try:
+            result = embedly_client.resolve_bank_account(account_number, bank_code)
+
+            if not result.get("success"):
+                error_msg = result.get("message", "Unable to validate account details")
+
+                # Log the error for debugging
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.error(
+                    f"Embedly account validation failed for user {request.user.email}: "
+                    f"{error_msg} (Account: {account_number}, Bank Code: {bank_code})"
+                )
+
+                return Response({
+                    "status": False,
+                    "detail": error_msg
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            # Return the resolved account details
+            account_data = result.get("data", {})
+
+            return Response({
+                "status": True,
+                "detail": "Account resolved successfully.",
+                "data": {
+                    "account_number": account_data.get("accountNumber", account_number),
+                    "account_name": account_data.get("accountName", ""),
+                    "bank_code": account_data.get("bankCode", bank_code)
+                }
+            }, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(
+                f"Exception during account validation for user {request.user.email}: {str(e)}",
+                exc_info=True
+            )
+
+            return Response({
+                "status": False,
+                "detail": "An error occurred while validating the account. Please try again."
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
 
+
+
+class GetBanksAPIView(APIView):
+    """
+    API endpoint to get list of banks available for transfers.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, *args, **kwargs):
+        """
+        Get list of banks from Embedly.
+        """
+        embedly_client = EmbedlyClient()
+
+        try:
+            result = embedly_client.get_banks()
+
+            if not result.get("success"):
+                error_msg = result.get("message", "Unable to fetch banks list")
+                return error_response(error_msg)
+
+            # Return the banks list
+            banks_data = result.get("data", [])
+
+            return success_response({
+                "banks": banks_data
+            })
+
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Exception fetching banks list: {str(e)}", exc_info=True)
+
+            return error_response("An error occurred while fetching banks list. Please try again.")
 
 
 class EmbedlyWebhookView(APIView):
