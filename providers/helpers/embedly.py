@@ -386,6 +386,47 @@ class EmbedlyClient:
         endpoint = f"Payout/status/{transaction_ref}"
         return self._make_request("GET", endpoint)
 
+    def get_wallet_history(
+        self,
+        wallet_id: str,
+        from_date: str,
+        to_date: str,
+        page: int = 1,
+        page_size: int = 50
+    ) -> Dict[str, Any]:
+        """
+        Retrieves transaction history for a specific wallet.
+
+        Args:
+            wallet_id (str): Unique identifier for the wallet (UUID).
+            from_date (str): Start date/time in ISO format (e.g., "2025-01-01T00:00:00Z").
+            to_date (str): End date/time in ISO format (e.g., "2025-01-31T23:59:59Z").
+            page (int): Page number (default: 1).
+            page_size (int): Number of records per page (default: 50).
+
+        Returns:
+            Dict[str, Any]: The API response with transaction history.
+            Example success response:
+            {
+                "success": True,
+                "data": {
+                    "transactions": [...],
+                    "totalCount": 100,
+                    "page": 1,
+                    "pageSize": 50
+                }
+            }
+        """
+        endpoint = "wallets/history"
+        payload = {
+            "walletId": wallet_id,
+            "From": from_date,
+            "To": to_date,
+            "Page": page,
+            "PageSize": page_size
+        }
+        return self._make_request("POST", endpoint, data=payload)
+
     def register_and_onboard_customer(
             self, customer_data: Dict[str, Any], bvn: Optional[str] = None, wallet_data: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
