@@ -71,11 +71,19 @@ class Command(BaseCommand):
                     else:
                         self.stdout.write(f"  {detail['email']}: No changes")
                 else:
+                    error_msg = detail.get('message', 'Unknown error')
+                    error_details = detail.get('error_details', {})
                     self.stdout.write(
                         self.style.ERROR(
-                            f"✗ {detail['email']}: {detail.get('message', 'Unknown error')}"
+                            f"✗ {detail['email']}: {error_msg}"
                         )
                     )
+                    if error_details and isinstance(error_details, dict):
+                        # Show additional error context if available
+                        if 'message' in error_details:
+                            self.stdout.write(f"    Details: {error_details.get('message')}")
+                        if 'error' in error_details:
+                            self.stdout.write(f"    Error: {error_details.get('error')}")
 
         # Exit with error code if any syncs failed
         if results['failed'] > 0:

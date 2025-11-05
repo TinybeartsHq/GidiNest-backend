@@ -40,12 +40,23 @@ class EmbedlySyncService:
             embedly_response = self.embedly_client.get_customer(user.embedly_customer_id)
 
             if not embedly_response.get("success"):
-                logger.error(f"Failed to fetch embedly data for user {user.email}: {embedly_response.get('message')}")
+                error_msg = embedly_response.get("message", "Failed to fetch from Embedly")
+                error_code = embedly_response.get("code", "unknown")
+                error_data = embedly_response.get("data", {})
+
+                # Log with more detail
+                logger.error(
+                    f"Failed to fetch embedly data for user {user.email} "
+                    f"(customer_id: {user.embedly_customer_id}): "
+                    f"Error: {error_msg}, Code: {error_code}, Data: {error_data}"
+                )
+
                 return {
                     "success": False,
                     "user_id": user.id,
                     "email": user.email,
-                    "message": embedly_response.get("message", "Failed to fetch from Embedly")
+                    "message": f"{error_msg} (Code: {error_code})",
+                    "error_details": error_data
                 }
 
             # Extract customer data
