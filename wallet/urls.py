@@ -5,6 +5,7 @@ from .views import (
     InitiateWithdrawalAPIView,
     ResolveBankAccountAPIView,
     EmbedlyWebhookView,
+    PayoutWebhookView,
     WalletTransactionHistoryAPIView,
     GetBanksAPIView
 )
@@ -21,6 +22,8 @@ urlpatterns = [
     path('resolve-bank-account', ResolveBankAccountAPIView.as_view(), name='resolve-bank-account'),
 
     path('embedly/webhook/secure', EmbedlyWebhookView.as_view(), name='embedly-webhook'),
+
+    path('payout/webhook', PayoutWebhookView.as_view(), name='payout-webhook'),
 
 ]
 

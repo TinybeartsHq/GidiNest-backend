@@ -105,16 +105,20 @@ class WithdrawalRequest(models.Model):
 
     STATUS_CHOICES = [
         ('pending', 'Pending'),
+        ('processing', 'Processing'),
         ('completed', 'Completed'),
         ('failed', 'Failed'),
     ]
-    
+
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     amount = models.DecimalField(max_digits=10, decimal_places=2)
     bank_name = models.CharField(max_length=255)
+    bank_code = models.CharField(max_length=20, null=True, blank=True)
     account_number = models.CharField(max_length=255)
-    bank_account_name = models.CharField(max_length=255,null=True)
-    status = models.CharField(choices=STATUS_CHOICES, max_length=10, default='pending')
+    bank_account_name = models.CharField(max_length=255, null=True)
+    status = models.CharField(choices=STATUS_CHOICES, max_length=20, default='pending')
+    transaction_ref = models.CharField(max_length=255, null=True, blank=True, help_text="Embedly transaction reference")
+    error_message = models.TextField(null=True, blank=True, help_text="Error message if transfer failed")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

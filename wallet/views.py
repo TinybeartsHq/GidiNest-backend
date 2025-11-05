@@ -112,13 +112,15 @@ class InitiateWithdrawalAPIView(APIView):
         # Parse the input data
         bank_name = request.data.get('bank_name')
         account_number = request.data.get('account_number')
+        account_name = request.data.get('account_name')  # Destination account name
         withdrawal_amount = request.data.get('amount')
-        bank_code = request.data.get('bank_code')  # Assuming bank code is passed
+        bank_code = request.data.get('bank_code')
 
         # Validate inputs
-        if not bank_name or not account_number or not withdrawal_amount or not bank_code:
-            return Response({"detail": "All fields (bank_account_name, bank_name, account_number, amount, bank_code) are required."},
-                            status=status.HTTP_400_BAD_REQUEST)
+        if not all([bank_name, account_number, account_name, withdrawal_amount, bank_code]):
+            return Response({
+                "detail": "All fields (bank_name, account_number, account_name, amount, bank_code) are required."
+            }, status=status.HTTP_400_BAD_REQUEST)
 
         try:
             withdrawal_amount = float(withdrawal_amount)
@@ -128,40 +130,124 @@ class InitiateWithdrawalAPIView(APIView):
         if withdrawal_amount <= 0:
             return Response({"detail": "Amount must be greater than zero."}, status=status.HTTP_400_BAD_REQUEST)
 
+        # Minimum withdrawal check (optional - adjust as needed)
+        if withdrawal_amount < 100:
+            return Response({"detail": "Minimum withdrawal amount is NGN 100."}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
             wallet = request.user.wallet
         except ObjectDoesNotExist:
-            # Don't create wallet here - user needs to verify BVN/NIN first
             return Response({
                 "detail": "You don't have a wallet yet. Please verify your BVN or NIN to activate your wallet."
             }, status=status.HTTP_404_NOT_FOUND)
 
-
         if wallet.balance < withdrawal_amount:
             return Response({"detail": "Insufficient balance."}, status=status.HTTP_400_BAD_REQUEST)
-        
+
+        # Deduct balance first
+        wallet.balance -= Decimal(str(withdrawal_amount))
+        wallet.save()
+
+        # Create withdrawal request
         withdrawal_request = WithdrawalRequest.objects.create(
             user=request.user,
             amount=withdrawal_amount,
             bank_name=bank_name,
+            bank_code=bank_code,
             account_number=account_number,
-            status='pending' 
+            bank_account_name=account_name,
+            status='pending'
         )
 
-        
+        # Process withdrawal via Embedly
+        embedly_client = EmbedlyClient()
 
-        wallet.balance -= Decimal(str(withdrawal_amount))
-        wallet.save()
+        try:
+            # Convert amount to kobo (multiply by 100)
+            amount_in_kobo = int(withdrawal_amount * 100)
 
+            # Get currency ID from settings
+            currency_id = settings.EMBEDLY_CURRENCY_ID_NGN
 
-        # Serialize and return the withdrawal request details
-        withdrawal_request_serializer = WithdrawalRequestSerializer(withdrawal_request)
-        return Response({
-            "status":True,
-            "detail": "Withdrawal initiated successfully.",
-            "withdrawal_request": withdrawal_request_serializer.data
-        }, status=status.HTTP_200_OK)
+            # Initiate transfer
+            transfer_result = embedly_client.initiate_bank_transfer(
+                destination_bank_code=bank_code,
+                destination_account_number=account_number,
+                destination_account_name=account_name,
+                source_account_number=wallet.account_number,
+                source_account_name=wallet.account_name,
+                amount=amount_in_kobo,
+                currency_id=currency_id,
+                remarks=f"Withdrawal request #{withdrawal_request.id}",
+                webhook_url=f"{settings.BASE_URL}/api/v1/wallet/payout/webhook",
+                customer_transaction_reference=str(withdrawal_request.id)
+            )
+
+            if transfer_result.get("success"):
+                # Store transaction reference
+                transaction_data = transfer_result.get("data", {})
+                withdrawal_request.transaction_ref = transaction_data.get("transactionRef")
+                withdrawal_request.status = 'processing'
+                withdrawal_request.save()
+
+                # Create debit transaction record
+                WalletTransaction.objects.create(
+                    wallet=wallet,
+                    transaction_type='debit',
+                    amount=withdrawal_amount,
+                    description=f"Withdrawal to {bank_name} - {account_number}",
+                    external_reference=withdrawal_request.transaction_ref
+                )
+
+                # Serialize and return success
+                withdrawal_request_serializer = WithdrawalRequestSerializer(withdrawal_request)
+                return Response({
+                    "status": True,
+                    "detail": "Withdrawal initiated successfully. Funds will be transferred shortly.",
+                    "withdrawal_request": withdrawal_request_serializer.data
+                }, status=status.HTTP_200_OK)
+            else:
+                # Transfer failed - refund user
+                error_msg = transfer_result.get("message", "Unable to process withdrawal")
+                withdrawal_request.status = 'failed'
+                withdrawal_request.error_message = error_msg
+                withdrawal_request.save()
+
+                # Refund balance
+                wallet.deposit(Decimal(str(withdrawal_amount)))
+
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.error(
+                    f"Withdrawal failed for user {request.user.email}: {error_msg} "
+                    f"(Amount: {withdrawal_amount}, Bank: {bank_code})"
+                )
+
+                return Response({
+                    "status": False,
+                    "detail": f"Withdrawal failed: {error_msg}"
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+        except Exception as e:
+            # Unexpected error - refund user
+            withdrawal_request.status = 'failed'
+            withdrawal_request.error_message = str(e)
+            withdrawal_request.save()
+
+            # Refund balance
+            wallet.deposit(Decimal(str(withdrawal_amount)))
+
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(
+                f"Exception during withdrawal for user {request.user.email}: {str(e)}",
+                exc_info=True
+            )
+
+            return Response({
+                "status": False,
+                "detail": "An error occurred while processing your withdrawal. Your balance has been refunded."
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
 
 
@@ -276,6 +362,122 @@ class GetBanksAPIView(APIView):
             logger.error(f"Exception fetching banks list: {str(e)}", exc_info=True)
 
             return error_response("An error occurred while fetching banks list. Please try again.")
+
+
+class PayoutWebhookView(APIView):
+    """
+    Webhook handler for Embedly Payout (withdrawal) events.
+    """
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request, *args, **kwargs):
+        signature = request.headers.get('x-embedly-signature')
+        raw_body = request.body.decode('utf-8')
+
+        # Check if signature or body is missing
+        if not signature or not raw_body:
+            return JsonResponse({'error': 'Missing signature or body'}, status=400)
+
+        # Verify signature
+        api_key = settings.EMBEDLY_API_KEY_PRODUCTION
+        hmac_object = hmac.new(api_key.encode('utf-8'), raw_body.encode('utf-8'), hashlib.sha512)
+        computed_signature = hmac_object.hexdigest()
+
+        if not hmac.compare_digest(computed_signature, signature):
+            return JsonResponse({'error': 'Invalid signature - authentication failed'}, status=403)
+
+        # Parse the JSON payload
+        try:
+            payload = json.loads(raw_body)
+        except json.JSONDecodeError:
+            return JsonResponse({'error': 'Invalid JSON'}, status=400)
+
+        # Extract payout data
+        data = payload.get('data', {})
+        transaction_ref = data.get('transactionRef')
+        status_value = data.get('status', '').lower()
+        customer_ref = data.get('customerTransactionReference')
+
+        if not transaction_ref:
+            return JsonResponse({'error': 'Missing transactionRef'}, status=400)
+
+        import logging
+        logger = logging.getLogger(__name__)
+
+        try:
+            # Find withdrawal request by transaction_ref or customer_ref
+            withdrawal_request = None
+            if transaction_ref:
+                withdrawal_request = WithdrawalRequest.objects.filter(
+                    transaction_ref=transaction_ref
+                ).first()
+
+            if not withdrawal_request and customer_ref:
+                withdrawal_request = WithdrawalRequest.objects.filter(
+                    id=customer_ref
+                ).first()
+
+            if not withdrawal_request:
+                logger.warning(f"Withdrawal request not found for ref: {transaction_ref}")
+                return JsonResponse({'error': 'Withdrawal request not found'}, status=404)
+
+            # Update withdrawal status based on payout status
+            if status_value in ['successful', 'success', 'completed']:
+                withdrawal_request.status = 'completed'
+                withdrawal_request.save()
+
+                # Send notification to user
+                cuoral_client = CuoralAPI()
+                cuoral_client.send_sms(
+                    withdrawal_request.user.phone,
+                    f"Your withdrawal of NGN {withdrawal_request.amount} has been completed successfully."
+                )
+
+                emailclient = MailClient()
+                emailclient.send_email(
+                    to_email=withdrawal_request.user.email,
+                    subject="Withdrawal Successful",
+                    template_name="emails/withdrawal_success.html",
+                    context={
+                        "amount": f"NGN {withdrawal_request.amount}",
+                        "bank_name": withdrawal_request.bank_name,
+                        "account_number": withdrawal_request.account_number
+                    },
+                    to_name=withdrawal_request.user.first_name
+                )
+
+                logger.info(f"Withdrawal {withdrawal_request.id} completed successfully")
+
+            elif status_value in ['failed', 'error']:
+                withdrawal_request.status = 'failed'
+                withdrawal_request.error_message = data.get('message', 'Transfer failed')
+                withdrawal_request.save()
+
+                # Refund the user
+                try:
+                    wallet = withdrawal_request.user.wallet
+                    wallet.deposit(Decimal(str(withdrawal_request.amount)))
+
+                    # Notify user of refund
+                    cuoral_client = CuoralAPI()
+                    cuoral_client.send_sms(
+                        withdrawal_request.user.phone,
+                        f"Your withdrawal of NGN {withdrawal_request.amount} failed. Funds have been refunded to your wallet."
+                    )
+
+                    logger.info(f"Withdrawal {withdrawal_request.id} failed, user refunded")
+                except Exception as refund_error:
+                    logger.error(f"Failed to refund user for withdrawal {withdrawal_request.id}: {refund_error}")
+
+            return JsonResponse({
+                'status': 'success',
+                'message': 'Webhook processed',
+                'data': payload
+            }, status=200)
+
+        except Exception as e:
+            logger.error(f"Error processing payout webhook: {str(e)}", exc_info=True)
+            return JsonResponse({'error': 'Internal server error'}, status=500)
 
 
 class EmbedlyWebhookView(APIView):
