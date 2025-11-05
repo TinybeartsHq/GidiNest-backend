@@ -9,11 +9,14 @@ Usage:
 """
 from django.core.management.base import BaseCommand
 from django.utils import timezone
+from django.contrib.auth import get_user_model
 from decimal import Decimal
 
 from wallet.models import WithdrawalRequest
 from providers.helpers.cuoral import CuoralAPI
 from notification.helper.email import MailClient
+
+User = get_user_model()
 
 import logging
 
