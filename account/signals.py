@@ -11,13 +11,15 @@ from providers.helpers.embedly import EmbedlyClient
 def create_embedly_customer(sender, instance, created, **kwargs):
     """
     Signal receiver to create an Embedly customer when a new UserModel instance is created.
+    NOTE: Wallet creation now happens AFTER BVN/NIN verification, not on registration.
     """
     if created and not instance.embedly_customer_id:
 
-        try:
-            Wallet.objects.create(user=instance)
-        except Exception as e:
-            pass  # Wallet creation failure is logged in DB
+        # Wallet creation removed - now happens after BVN/NIN verification
+        # try:
+        #     Wallet.objects.create(user=instance)
+        # except Exception as e:
+        #     pass  # Wallet creation failure is logged in DB
             
  
         client = EmbedlyClient()

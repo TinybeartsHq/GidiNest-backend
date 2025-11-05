@@ -46,8 +46,12 @@ class WalletBalanceAPIView(APIView):
             # Attempt to get the user's wallet
             wallet = request.user.wallet
         except ObjectDoesNotExist:
-            wallet = Wallet.objects.create(user=request.user)
-      
+            # Don't create wallet here - user needs to verify BVN/NIN first
+            return error_response(
+                "You don't have a wallet yet. Please verify your BVN or NIN to activate your wallet.",
+                status_code=status.HTTP_404_NOT_FOUND
+            )
+
         serializer = WalletBalanceSerializer(wallet)
 
         data = {
@@ -123,13 +127,16 @@ class InitiateWithdrawalAPIView(APIView):
         if withdrawal_amount <= 0:
             return Response({"detail": "Amount must be greater than zero."}, status=status.HTTP_400_BAD_REQUEST)
 
- 
+
         try:
             wallet = request.user.wallet
         except ObjectDoesNotExist:
-            wallet = Wallet.objects.create(user=request.user)
+            # Don't create wallet here - user needs to verify BVN/NIN first
+            return Response({
+                "detail": "You don't have a wallet yet. Please verify your BVN or NIN to activate your wallet."
+            }, status=status.HTTP_404_NOT_FOUND)
 
- 
+
         if wallet.balance < withdrawal_amount:
             return Response({"detail": "Insufficient balance."}, status=status.HTTP_400_BAD_REQUEST)
         

@@ -532,3 +532,80 @@ class SyncEmbedlyVerificationView(APIView):
         }
 
         return success_response(response_data)
+
+
+class CreateWalletView(APIView):
+    """
+    View to manually create a wallet for verified users who don't have one.
+    This is a fallback for users who verified BVN/NIN but wallet creation failed.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        """
+        Create a wallet for the authenticated user if they're verified but don't have one.
+        """
+        user = request.user
+
+        # Check if user already has a virtual wallet
+        if user.has_virtual_wallet:
+            return error_response("You already have a virtual wallet.")
+
+        # Check if user is verified (has BVN or NIN)
+        if not user.has_bvn and not user.has_nin:
+            return error_response(
+                "You need to verify your BVN or NIN before creating a wallet. "
+                "Please complete BVN or NIN verification first."
+            )
+
+        # Check if user has Embedly customer ID
+        if not user.embedly_customer_id:
+            return error_response(
+                "Your account is not set up for wallet creation. Please contact support."
+            )
+
+        # Create wallet using Embedly
+        embedly_client = EmbedlyClient()
+
+        try:
+            wallet_res = embedly_client.create_wallet(
+                customer_id=user.embedly_customer_id,
+                name=f"{user.first_name} {user.last_name}",
+                phone=user.phone
+            )
+
+            if not wallet_res.get("success"):
+                error_msg = wallet_res.get("message", "Failed to create virtual wallet")
+                return error_response(f"Wallet creation failed: {error_msg}")
+
+            # Create or update wallet in database
+            data = wallet_res["data"]["virtualAccount"]
+            wallet, created = Wallet.objects.get_or_create(user=user)
+
+            wallet.account_name = f"{user.first_name} {user.last_name}"
+            wallet.account_number = data.get("accountNumber")
+            wallet.bank = data.get("bankName")
+            wallet.bank_code = data.get("bankCode")
+            wallet.embedly_wallet_id = wallet_res["data"]["id"]
+            wallet.save()
+
+            user.embedly_wallet_id = wallet_res["data"]["id"]
+            user.has_virtual_wallet = True
+            user.save(update_fields=["embedly_wallet_id", "has_virtual_wallet"])
+
+            response_data = {
+                "message": "Wallet created successfully!",
+                "wallet": {
+                    "account_name": wallet.account_name,
+                    "account_number": wallet.account_number,
+                    "bank": wallet.bank,
+                    "bank_code": wallet.bank_code,
+                    "balance": float(wallet.balance),
+                    "currency": wallet.currency,
+                }
+            }
+
+            return success_response(response_data)
+
+        except Exception as e:
+            return error_response(f"An error occurred while creating your wallet: {str(e)}")

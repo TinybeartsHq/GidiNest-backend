@@ -5,7 +5,8 @@ from .views import (
     UpdateNINView,
     AccountTierInfoView,
     VerificationStatusView,
-    SyncEmbedlyVerificationView
+    SyncEmbedlyVerificationView,
+    CreateWalletView
 )
 
 urlpatterns = [
@@ -15,5 +16,6 @@ urlpatterns = [
     path('tier-info', AccountTierInfoView.as_view(), name='account-tier-info'),
     path('verification-status', VerificationStatusView.as_view(), name='verification-status'),
     path('sync-embedly', SyncEmbedlyVerificationView.as_view(), name='sync-embedly-verification'),
+    path('create-wallet', CreateWalletView.as_view(), name='create-wallet'),
 ]
 
