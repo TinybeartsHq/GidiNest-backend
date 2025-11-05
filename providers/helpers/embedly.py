@@ -21,10 +21,11 @@ class EmbedlyClient:
             organization_id (str): The ID of the organization.
             base_url (str): The base URL of the Embedly API.
         """
-        
+
         self.api_key = settings.EMBEDLY_API_KEY_PRODUCTION
         self.organization_id = settings.EMBEDLY_ORGANIZATION_ID_PRODUCTION
         self.base_url = "https://waas-prod.embedly.ng/api/v1"
+        self.payout_base_url = "https://payout-prod.embedly.ng/api"  # Payout API uses different base URL
         self.headers = {
             'Content-Type': 'application/json',
             'x-api-key': self.api_key
@@ -64,7 +65,12 @@ class EmbedlyClient:
         """
            Private helper to handle API requests and general error handling.
         """
-        url = f"{self.base_url}/{endpoint}"
+        # Use payout_base_url for Payout endpoints, otherwise use regular base_url
+        if endpoint.startswith("Payout/"):
+            url = f"{self.payout_base_url}/{endpoint}"
+        else:
+            url = f"{self.base_url}/{endpoint}"
+
         payload = json.dumps(data) if data else None
         response = None
 
