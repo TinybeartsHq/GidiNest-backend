@@ -202,19 +202,30 @@ class InitiateWithdrawalAPIView(APIView):
             )
 
             if transfer_result.get("success"):
-                # Store transaction reference
+                # Store transaction reference (provider may return a string id or an object)
                 transaction_data = transfer_result.get("data", {})
-                withdrawal_request.transaction_ref = transaction_data.get("transactionRef")
+                if isinstance(transaction_data, dict):
+                    txref = (
+                        transaction_data.get("transactionRef")
+                        or transaction_data.get("transactionReference")
+                        or transaction_data.get("reference")
+                        or transaction_data.get("transactionId")
+                        or transaction_data.get("id")
+                    )
+                else:
+                    txref = str(transaction_data)
+
+                withdrawal_request.transaction_ref = txref
                 withdrawal_request.status = 'processing'
                 withdrawal_request.save()
 
-                # Create debit transaction record
+                # Create debit transaction record with safe reference
                 WalletTransaction.objects.create(
                     wallet=wallet,
                     transaction_type='debit',
                     amount=withdrawal_amount,
                     description=f"Withdrawal to {bank_name} - {account_number}",
-                    external_reference=withdrawal_request.transaction_ref
+                    external_reference=txref or f"WITHDRAWAL_{withdrawal_request.id}"
                 )
 
                 # Serialize and return success
