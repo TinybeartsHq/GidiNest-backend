@@ -181,8 +181,8 @@ class InitiateWithdrawalAPIView(APIView):
         embedly_client = EmbedlyClient()
 
         try:
-            # Convert amount to kobo (multiply by 100)
-            amount_in_kobo = int((withdrawal_amount * Decimal('100')).to_integral_value())
+            # Provider expects whole currency units (NGN), not kobo
+            amount_in_kobo = int(withdrawal_amount.to_integral_value())
 
             # Get currency ID from settings
             currency_id = settings.EMBEDLY_CURRENCY_ID_NGN
