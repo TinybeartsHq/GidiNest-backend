@@ -123,15 +123,15 @@ class InitiateWithdrawalAPIView(APIView):
             }, status=status.HTTP_400_BAD_REQUEST)
 
         try:
-            withdrawal_amount = float(withdrawal_amount)
-        except ValueError:
+            withdrawal_amount = Decimal(str(withdrawal_amount))
+        except Exception:
             return Response({"detail": "Invalid amount."}, status=status.HTTP_400_BAD_REQUEST)
 
-        if withdrawal_amount <= 0:
+        if withdrawal_amount <= Decimal('0'):
             return Response({"detail": "Amount must be greater than zero."}, status=status.HTTP_400_BAD_REQUEST)
 
         # Minimum withdrawal check (optional - adjust as needed)
-        if withdrawal_amount < 100:
+        if withdrawal_amount < Decimal('100'):
             return Response({"detail": "Minimum withdrawal amount is NGN 100."}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
@@ -141,12 +141,11 @@ class InitiateWithdrawalAPIView(APIView):
                 "detail": "You don't have a wallet yet. Please verify your BVN or NIN to activate your wallet."
             }, status=status.HTTP_404_NOT_FOUND)
 
-        if wallet.balance < withdrawal_amount:
+        # Attempt atomic withdraw to ensure sufficient funds
+        try:
+            wallet.withdraw(withdrawal_amount)
+        except Exception:
             return Response({"detail": "Insufficient balance."}, status=status.HTTP_400_BAD_REQUEST)
-
-        # Deduct balance first
-        wallet.balance -= Decimal(str(withdrawal_amount))
-        wallet.save()
 
         # Create withdrawal request
         withdrawal_request = WithdrawalRequest.objects.create(
@@ -164,7 +163,7 @@ class InitiateWithdrawalAPIView(APIView):
 
         try:
             # Convert amount to kobo (multiply by 100)
-            amount_in_kobo = int(withdrawal_amount * 100)
+            amount_in_kobo = int((withdrawal_amount * Decimal('100')).to_integral_value())
 
             # Get currency ID from settings
             currency_id = settings.EMBEDLY_CURRENCY_ID_NGN
@@ -214,7 +213,7 @@ class InitiateWithdrawalAPIView(APIView):
                 withdrawal_request.save()
 
                 # Refund balance
-                wallet.deposit(Decimal(str(withdrawal_amount)))
+                wallet.deposit(withdrawal_amount)
 
                 import logging
                 logger = logging.getLogger(__name__)
@@ -235,7 +234,7 @@ class InitiateWithdrawalAPIView(APIView):
             withdrawal_request.save()
 
             # Refund balance
-            wallet.deposit(Decimal(str(withdrawal_amount)))
+            wallet.deposit(withdrawal_amount)
 
             import logging
             logger = logging.getLogger(__name__)
@@ -740,8 +739,8 @@ class EmbedlyWebhookView(APIView):
         except IntegrityError as e:
             return JsonResponse({'error': f'Transaction with this reference has been processed'}, status=200)
 
-        # Update the wallet balance
-        wallet.deposit(amount)
+        # Update the wallet balance (ensure Decimal)
+        wallet.deposit(Decimal(str(amount)))
 
         #send notification to user sms and email
         cuoral_client = CuoralAPI()
