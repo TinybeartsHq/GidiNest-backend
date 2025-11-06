@@ -28,7 +28,8 @@ class EmbedlyClient:
         self.payout_base_url = "https://payout-prod.embedly.ng/api"  # Payout API uses different base URL
         self.headers = {
             'Content-Type': 'application/json',
-            'x-api-key': self.api_key
+            'x-api-key': self.api_key,
+            'x-organization-id': self.organization_id
         }
     
     def _log_to_db(

@@ -508,19 +508,40 @@ class PayoutWebhookView(APIView):
     permission_classes = [permissions.AllowAny]
 
     def post(self, request, *args, **kwargs):
-        signature = request.headers.get('x-embedly-signature')
         raw_body = request.body.decode('utf-8')
 
-        # Check if signature or body is missing
-        if not signature or not raw_body:
-            return JsonResponse({'error': 'Missing signature or body'}, status=400)
+        # Check body
+        if not raw_body:
+            return JsonResponse({'error': 'Missing body'}, status=400)
 
-        # Verify signature
-        api_key = settings.EMBEDLY_API_KEY_PRODUCTION
-        hmac_object = hmac.new(api_key.encode('utf-8'), raw_body.encode('utf-8'), hashlib.sha512)
-        computed_signature = hmac_object.hexdigest()
+        # Accept multiple possible header names from provider
+        provided_signature = (
+            request.headers.get('x-embedly-signature')
+            or request.headers.get('x-signature')
+            or request.headers.get('x-embed-signature')
+        )
+        if not provided_signature:
+            return JsonResponse({'error': 'Missing signature'}, status=400)
 
-        if not hmac.compare_digest(computed_signature, signature):
+        # Try multiple secrets and algorithms (sha512, sha256)
+        secret_candidates = [
+            getattr(settings, 'EMBEDLY_WEBHOOK_SECRET', None),
+            getattr(settings, 'EMBEDLY_API_KEY_PRODUCTION', None),
+        ]
+        secret_candidates = [s for s in secret_candidates if s]
+
+        def _matches(sig: str, secret: str) -> bool:
+            # Some providers prefix with algo=hex; strip if present
+            normalized = sig.split('=')[-1].strip().lower()
+            body_bytes = raw_body.encode('utf-8')
+            for algo in (hashlib.sha512, hashlib.sha256):
+                digest = hmac.new(secret.encode('utf-8'), body_bytes, algo).hexdigest().lower()
+                if hmac.compare_digest(digest, normalized):
+                    return True
+            return False
+
+        verified = any(_matches(provided_signature, secret) for secret in secret_candidates)
+        if not verified:
             return JsonResponse({'error': 'Invalid signature - authentication failed'}, status=403)
 
         # Parse the JSON payload
@@ -622,22 +643,36 @@ class EmbedlyWebhookView(APIView):
     permission_classes = [permissions.AllowAny]
 
     def post(self, request, *args, **kwargs):
-        signature = request.headers.get('x-embedly-signature')
         raw_body = request.body.decode('utf-8')
 
-        # Check if signature or body is missing
-        if not signature or not raw_body:
-            return JsonResponse({'error': 'Missing signature or body'}, status=400)
+        if not raw_body:
+            return JsonResponse({'error': 'Missing body'}, status=400)
 
-        # Define your API key (preferably from settings)
-        api_key = settings.EMBEDLY_API_KEY_PRODUCTION
+        provided_signature = (
+            request.headers.get('x-embedly-signature')
+            or request.headers.get('x-signature')
+            or request.headers.get('x-embed-signature')
+        )
+        if not provided_signature:
+            return JsonResponse({'error': 'Missing signature'}, status=400)
 
-        # Compute the expected signature using HMAC and sha512
-        hmac_object = hmac.new(api_key.encode('utf-8'), raw_body.encode('utf-8'), hashlib.sha512)
-        computed_signature = hmac_object.hexdigest()
+        secret_candidates = [
+            getattr(settings, 'EMBEDLY_WEBHOOK_SECRET', None),
+            getattr(settings, 'EMBEDLY_API_KEY_PRODUCTION', None),
+        ]
+        secret_candidates = [s for s in secret_candidates if s]
 
-        # Verify the signature
-        if not hmac.compare_digest(computed_signature, signature):
+        def _matches(sig: str, secret: str) -> bool:
+            normalized = sig.split('=')[-1].strip().lower()
+            body_bytes = raw_body.encode('utf-8')
+            for algo in (hashlib.sha512, hashlib.sha256):
+                digest = hmac.new(secret.encode('utf-8'), body_bytes, algo).hexdigest().lower()
+                if hmac.compare_digest(digest, normalized):
+                    return True
+            return False
+
+        verified = any(_matches(provided_signature, secret) for secret in secret_candidates)
+        if not verified:
             return JsonResponse({'error': 'Invalid signature - authentication failed'}, status=403)
 
         # Parse the JSON payload
