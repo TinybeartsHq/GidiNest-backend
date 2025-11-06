@@ -3,6 +3,7 @@ from django.db import models
 from core.helpers.model import BaseModel
 from django.contrib.auth.base_user import AbstractBaseUser, BaseUserManager
 from django.contrib.auth.models import PermissionsMixin
+from django.contrib.auth.hashers import make_password, check_password
 
 class UserManager(BaseUserManager):
     def create_user(self,email,password=None,**extra_fields):
@@ -86,6 +87,8 @@ class UserModel(BaseModel, AbstractBaseUser,PermissionsMixin):
     embedly_wallet_id = models.CharField(null=True, max_length=200,default="")
     has_virtual_wallet = models.BooleanField(default=False)
     email_verified = models.BooleanField(default=False)
+    transaction_pin = models.CharField(null=True, max_length=200, help_text="Hashed transaction PIN for withdrawals")
+    transaction_pin_set = models.BooleanField(default=False, help_text="Whether user has set a transaction PIN")
  
 
     indexes = [
@@ -125,3 +128,30 @@ class UserModel(BaseModel, AbstractBaseUser,PermissionsMixin):
     
     def get_by_natural_key(self, email):
         return self.get(email=email)
+    
+    def set_transaction_pin(self, raw_pin):
+        """Set transaction PIN (4-6 digits)"""
+        if not raw_pin or len(str(raw_pin)) < 4 or len(str(raw_pin)) > 6:
+            raise ValueError("Transaction PIN must be 4-6 digits")
+        if not str(raw_pin).isdigit():
+            raise ValueError("Transaction PIN must contain only digits")
+        self.transaction_pin = make_password(str(raw_pin))
+        self.transaction_pin_set = True
+        self.save(update_fields=['transaction_pin', 'transaction_pin_set'])
+    
+    def verify_transaction_pin(self, raw_pin):
+        """Verify transaction PIN"""
+        if not self.transaction_pin_set or not self.transaction_pin:
+            return False
+        return check_password(str(raw_pin), self.transaction_pin)
+    
+    def get_verified_name(self):
+        """Get user's verified name from BVN or NIN"""
+        # Prefer BVN name if available, then NIN, then fallback to profile name
+        if self.has_bvn and self.bvn_first_name and self.bvn_last_name:
+            return f"{self.bvn_first_name} {self.bvn_last_name}".strip().upper()
+        elif self.has_nin and self.nin_first_name and self.nin_last_name:
+            return f"{self.nin_first_name} {self.nin_last_name}".strip().upper()
+        elif self.first_name and self.last_name:
+            return f"{self.first_name} {self.last_name}".strip().upper()
+        return None

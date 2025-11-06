@@ -115,12 +115,78 @@ class InitiateWithdrawalAPIView(APIView):
         account_name = request.data.get('account_name')  # Destination account name
         withdrawal_amount = request.data.get('amount')
         bank_code = request.data.get('bank_code')
+        transaction_pin = request.data.get('transaction_pin')
 
         # Validate inputs
         if not all([bank_name, account_number, account_name, withdrawal_amount, bank_code]):
             return Response({
+                "status": False,
                 "detail": "All fields (bank_name, account_number, account_name, amount, bank_code) are required."
             }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Validate transaction PIN
+        if not transaction_pin:
+            return Response({
+                "status": False,
+                "detail": "Transaction PIN is required for withdrawals."
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            wallet = request.user.wallet
+        except ObjectDoesNotExist:
+            return Response({
+                "status": False,
+                "detail": "You don't have a wallet yet. Please verify your BVN or NIN to activate your wallet."
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        # Check if transaction PIN is set
+        if not request.user.transaction_pin_set:
+            return Response({
+                "status": False,
+                "detail": "Transaction PIN not set. Please set your transaction PIN first."
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Verify transaction PIN
+        if not request.user.verify_transaction_pin(transaction_pin):
+            return Response({
+                "status": False,
+                "detail": "Invalid transaction PIN."
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Validate account name matches user's verified name
+        user_verified_name = request.user.get_verified_name()
+        if not user_verified_name:
+            return Response({
+                "status": False,
+                "detail": "Unable to verify your identity. Please ensure your BVN or NIN is verified."
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Normalize names for comparison (uppercase, remove extra spaces)
+        normalized_account_name = account_name.strip().upper()
+        normalized_user_name = user_verified_name.strip().upper()
+        
+        # Check if account name matches (allow if either first OR last name matches)
+        if normalized_account_name != normalized_user_name:
+            # Split into name parts
+            user_name_parts = normalized_user_name.split()
+            account_name_parts = normalized_account_name.split()
+            
+            # Check if first name or last name matches
+            user_first_name = user_name_parts[0] if user_name_parts else ""
+            user_last_name = user_name_parts[-1] if len(user_name_parts) > 1 else ""
+            
+            account_first_name = account_name_parts[0] if account_name_parts else ""
+            account_last_name = account_name_parts[-1] if len(account_name_parts) > 1 else ""
+            
+            # Allow if either first name OR last name matches
+            first_name_matches = user_first_name and account_first_name and user_first_name == account_first_name
+            last_name_matches = user_last_name and account_last_name and user_last_name == account_last_name
+            
+            if not (first_name_matches or last_name_matches):
+                return Response({
+                    "status": False,
+                    "detail": f"Account name must match your verified name ({user_verified_name}). The account's first name or last name must match your verified name."
+                }, status=status.HTTP_400_BAD_REQUEST)
 
         try:
             withdrawal_amount = Decimal(str(withdrawal_amount))
@@ -357,6 +423,87 @@ class ResolveBankAccountAPIView(APIView):
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
 
+
+
+class SetTransactionPinAPIView(APIView):
+    """
+    API endpoint to set or update transaction PIN for withdrawals.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, *args, **kwargs):
+        pin = request.data.get('pin')
+        old_pin = request.data.get('old_pin')  # Required if updating existing PIN
+        
+        if not pin:
+            return Response({
+                "status": False,
+                "detail": "PIN is required."
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # If PIN is already set, require old PIN
+        if request.user.transaction_pin_set:
+            if not old_pin:
+                return Response({
+                    "status": False,
+                    "detail": "Old PIN is required to update your transaction PIN."
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            if not request.user.verify_transaction_pin(old_pin):
+                return Response({
+                    "status": False,
+                    "detail": "Invalid old PIN."
+                }, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            was_set = request.user.transaction_pin_set
+            request.user.set_transaction_pin(pin)
+            return Response({
+                "status": True,
+                "detail": "Transaction PIN updated successfully." if was_set else "Transaction PIN set successfully."
+            }, status=status.HTTP_200_OK)
+        except ValueError as e:
+            return Response({
+                "status": False,
+                "detail": str(e)
+            }, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error setting transaction PIN for {request.user.email}: {str(e)}", exc_info=True)
+            return Response({
+                "status": False,
+                "detail": "An error occurred while setting your transaction PIN."
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class VerifyTransactionPinAPIView(APIView):
+    """
+    API endpoint to verify transaction PIN (for testing/validation).
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, *args, **kwargs):
+        pin = request.data.get('pin')
+        
+        if not pin:
+            return Response({
+                "status": False,
+                "detail": "PIN is required."
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        if not request.user.transaction_pin_set:
+            return Response({
+                "status": False,
+                "detail": "Transaction PIN not set."
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        is_valid = request.user.verify_transaction_pin(pin)
+        return Response({
+            "status": True,
+            "valid": is_valid,
+            "detail": "PIN is valid." if is_valid else "Invalid PIN."
+        }, status=status.HTTP_200_OK)
 
 
 class GetBanksAPIView(APIView):
