@@ -112,9 +112,9 @@ class Command(BaseCommand):
                     total_errors += 1
                     continue
 
-                # Extract transactions
+                # Extract transactions (support both response shapes)
                 data = result.get("data", {})
-                transactions = data.get("transactions", [])
+                transactions = data.get("transactions") or data.get("walletHistories") or []
 
                 if not transactions:
                     self.stdout.write(f'  ℹ️  No transactions found')
@@ -124,7 +124,7 @@ class Command(BaseCommand):
 
                 new_count = 0
                 for txn in transactions:
-                    reference = txn.get('reference') or txn.get('transactionReference')
+                    reference = txn.get('reference') or txn.get('transactionReference') or txn.get('transactionId')
 
                     if not reference:
                         continue
@@ -138,9 +138,17 @@ class Command(BaseCommand):
                         continue
 
                     # Determine transaction type and amount
-                    txn_type = txn.get('transactionType', '').lower()
+                    txn_type = (txn.get('transactionType') or '').lower()
+                    # Some responses use 'debitCreditIndicator': 'C' or 'D'
+                    if not txn_type:
+                        dci = (txn.get('debitCreditIndicator') or '').upper()
+                        if dci == 'C':
+                            txn_type = 'credit'
+                        elif dci == 'D':
+                            txn_type = 'debit'
+
                     amount = Decimal(str(txn.get('amount', 0)))
-                    description = txn.get('narration') or txn.get('description', '')
+                    description = txn.get('narration') or txn.get('description') or txn.get('remarks') or ''
 
                     # Map Embedly transaction type to our types
                     if 'credit' in txn_type or 'deposit' in txn_type:
