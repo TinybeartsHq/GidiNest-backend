@@ -423,24 +423,21 @@ class EmbedlyClient:
                 }
             }
         """
-        # Normalize timestamps to strict ISO-8601 with Z suffix
-        def _to_z(ts: str) -> str:
+        # Provider expects dates as yyyy-MM-dd (no time)
+        def _to_date(ts: str) -> str:
             if not ts:
                 return ts
-            # Strip microseconds if present for compatibility
-            if "." in ts:
-                ts = ts.split(".")[0]
-            if ts.endswith("Z"):
-                return ts
-            if ts.endswith("+00:00"):
-                return ts[:-6] + "Z"
-            return ts
+            # If ISO-like, take the date part before 'T'
+            if 'T' in ts:
+                return ts.split('T')[0]
+            # Fallback to first 10 chars if longer than a date string
+            return ts[:10]
 
         endpoint = "wallets/history"
         payload = {
             "walletId": wallet_id,
-            "From": _to_z(from_date),
-            "To": _to_z(to_date),
+            "From": _to_date(from_date),
+            "To": _to_date(to_date),
             "Page": page,
             "PageSize": page_size
         }
