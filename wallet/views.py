@@ -145,7 +145,26 @@ class InitiateWithdrawalAPIView(APIView):
         try:
             wallet.withdraw(withdrawal_amount)
         except Exception:
-            return Response({"detail": "Insufficient balance."}, status=status.HTTP_400_BAD_REQUEST)
+            # Provide diagnostic info
+            try:
+                # Refresh current balance from DB
+                from django.db.models import F
+                fresh_wallet = type(wallet).objects.get(id=wallet.id)
+                current_balance = fresh_wallet.balance
+            except Exception:
+                current_balance = wallet.balance
+
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(
+                f"Withdrawal rejected due to insufficient balance: requested={withdrawal_amount}, balance={current_balance}, user={request.user.email}"
+            )
+            return Response({
+                "status": False,
+                "detail": "Insufficient balance",
+                "available": str(current_balance),
+                "requested": str(withdrawal_amount)
+            }, status=status.HTTP_400_BAD_REQUEST)
 
         # Create withdrawal request
         withdrawal_request = WithdrawalRequest.objects.create(
