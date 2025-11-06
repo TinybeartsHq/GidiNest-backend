@@ -28,8 +28,11 @@ class EmbedlyClient:
         self.payout_base_url = "https://payout-prod.embedly.ng/api"  # Payout API uses different base URL
         self.headers = {
             'Content-Type': 'application/json',
+            'Accept': 'application/json',
             'x-api-key': self.api_key,
-            'x-organization-id': self.organization_id
+            'x-organization-id': self.organization_id,
+            # Some providers expect this alternative header key
+            'x-organization': self.organization_id
         }
     
     def _log_to_db(
@@ -100,12 +103,14 @@ class EmbedlyClient:
 
             self._log_to_db(endpoint, method, data, error_data, status_code, str(http_err))
 
-            if status_code == 401:
-                return {"success": False, "message": BVN_VALIDATION_FAILED, "code": "401"}
-            elif status_code == 404:
-                return {"success": False, "message": BVN_VALIDATION_FAILED, "code": "404"}
-            elif status_code == 500:
-                return {"success": False, "message": BVN_VALIDATION_FAILED, "code": "500"}
+            if status_code in (401, 404, 500):
+                # Return meaningful error from provider if available
+                message = None
+                if error_data and isinstance(error_data, dict):
+                    message = error_data.get('message') or error_data.get('error')
+                if not message:
+                    message = f"HTTP {status_code} error from provider"
+                return {"success": False, "message": message, "code": str(status_code), "data": error_data}
             elif status_code == 400:
                 # Bad request - return the actual error message from Embedly
                 error_msg = "Invalid request"
@@ -118,7 +123,7 @@ class EmbedlyClient:
             if error_data and isinstance(error_data, dict):
                 error_msg = error_data.get('message', error_data.get('error', error_msg))
 
-            return {"success": False, "message": error_msg, "data": error_data}
+            return {"success": False, "message": error_msg, "data": error_data, "code": str(status_code) if status_code else None}
 
         except requests.exceptions.RequestException as req_err:
             self._log_to_db(endpoint, method, data, None, None, str(req_err))
@@ -418,15 +423,45 @@ class EmbedlyClient:
                 }
             }
         """
+        # Normalize timestamps to strict ISO-8601 with Z suffix
+        def _to_z(ts: str) -> str:
+            if not ts:
+                return ts
+            # Strip microseconds if present for compatibility
+            if "." in ts:
+                ts = ts.split(".")[0]
+            if ts.endswith("Z"):
+                return ts
+            if ts.endswith("+00:00"):
+                return ts[:-6] + "Z"
+            return ts
+
         endpoint = "wallets/history"
         payload = {
             "walletId": wallet_id,
-            "From": from_date,
-            "To": to_date,
+            "From": _to_z(from_date),
+            "To": _to_z(to_date),
             "Page": page,
             "PageSize": page_size
         }
-        return self._make_request("POST", endpoint, data=payload)
+        # First try POST
+        result = self._make_request("POST", endpoint, data=payload)
+        if result.get("success"):
+            return result
+
+        # If method not allowed, retry as GET with query params
+        if result.get("code") == "405":
+            get_result = self._make_request("GET", endpoint, params=payload)
+            if get_result.get("success"):
+                return get_result
+
+            # Some providers use capitalized path
+            alt_endpoint = "Wallets/history"
+            alt_result = self._make_request("GET", alt_endpoint, params=payload)
+            if alt_result.get("success"):
+                return alt_result
+
+        return result
 
     def register_and_onboard_customer(
             self, customer_data: Dict[str, Any], bvn: Optional[str] = None, wallet_data: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:

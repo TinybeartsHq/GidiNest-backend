@@ -542,6 +542,19 @@ class PayoutWebhookView(APIView):
 
         verified = any(_matches(provided_signature, secret) for secret in secret_candidates)
         if not verified:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(
+                "Embedly payout webhook signature mismatch",
+                extra={
+                    "headers_present": {
+                        "x-embedly-signature": bool(request.headers.get('x-embedly-signature')),
+                        "x-signature": bool(request.headers.get('x-signature')),
+                        "x-embed-signature": bool(request.headers.get('x-embed-signature')),
+                    },
+                    "sig_preview": provided_signature[:12].lower() if provided_signature else None,
+                }
+            )
             return JsonResponse({'error': 'Invalid signature - authentication failed'}, status=403)
 
         # Parse the JSON payload
@@ -673,6 +686,19 @@ class EmbedlyWebhookView(APIView):
 
         verified = any(_matches(provided_signature, secret) for secret in secret_candidates)
         if not verified:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(
+                "Embedly deposit webhook signature mismatch",
+                extra={
+                    "headers_present": {
+                        "x-embedly-signature": bool(request.headers.get('x-embedly-signature')),
+                        "x-signature": bool(request.headers.get('x-signature')),
+                        "x-embed-signature": bool(request.headers.get('x-embed-signature')),
+                    },
+                    "sig_preview": provided_signature[:12].lower() if provided_signature else None,
+                }
+            )
             return JsonResponse({'error': 'Invalid signature - authentication failed'}, status=403)
 
         # Parse the JSON payload
