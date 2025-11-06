@@ -165,7 +165,7 @@ class Command(BaseCommand):
                         )
                         new_count += 1
                     else:
-                        # Create transaction
+                        # Create transaction and update wallet balance accordingly
                         try:
                             WalletTransaction.objects.create(
                                 wallet=wallet,
@@ -174,6 +174,17 @@ class Command(BaseCommand):
                                 description=description,
                                 external_reference=reference
                             )
+
+                            # Reflect balance change
+                            if our_txn_type == 'credit':
+                                wallet.deposit(amount)
+                            elif our_txn_type == 'debit':
+                                try:
+                                    wallet.withdraw(amount)
+                                except Exception:
+                                    # If insufficient due to prior mismatch, skip withdraw to avoid negative
+                                    pass
+
                             new_count += 1
                             self.stdout.write(
                                 f'    ✅ Created: {our_txn_type} NGN {amount}'
