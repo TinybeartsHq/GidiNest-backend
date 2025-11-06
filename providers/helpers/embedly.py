@@ -444,24 +444,30 @@ class EmbedlyClient:
             "Page": page,
             "PageSize": page_size
         }
-        # First try POST
-        result = self._make_request("POST", endpoint, data=payload)
+        # Per provider docs, try GET first with query params
+        result = self._make_request("GET", endpoint, params=payload)
         if result.get("success"):
             return result
 
-        # If method not allowed, retry as GET with query params
-        if result.get("code") == "405":
-            get_result = self._make_request("GET", endpoint, params=payload)
-            if get_result.get("success"):
-                return get_result
+        # Fallbacks if GET fails: try POST and alternate capitalization
+        message = (result.get("message") or "").lower()
+        code = (result.get("code") or "").lower()
 
-            # Some providers use capitalized path
-            alt_endpoint = "Wallets/history"
-            alt_result = self._make_request("GET", alt_endpoint, params=payload)
-            if alt_result.get("success"):
-                return alt_result
+        # Try POST
+        post_result = self._make_request("POST", endpoint, data=payload)
+        if post_result.get("success"):
+            return post_result
 
-        return result
+        # Try alternate path capitalization with GET then POST
+        alt_endpoint = "Wallets/history"
+        alt_get = self._make_request("GET", alt_endpoint, params=payload)
+        if alt_get.get("success"):
+            return alt_get
+        alt_post = self._make_request("POST", alt_endpoint, data=payload)
+        if alt_post.get("success"):
+            return alt_post
+
+        return post_result if post_result else result
 
     def register_and_onboard_customer(
             self, customer_data: Dict[str, Any], bvn: Optional[str] = None, wallet_data: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
