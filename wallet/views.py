@@ -55,9 +55,15 @@ class WalletBalanceAPIView(APIView):
 
         serializer = WalletBalanceSerializer(wallet)
 
+        # Refresh user to get latest transaction_pin_set status
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+        user = User.objects.get(id=request.user.id)
+
         data = {
             'wallet':serializer.data,
-            "user_goals":SavingsGoalSerializer(SavingsGoalModel.objects.filter(user=request.user), many=True).data
+            "user_goals":SavingsGoalSerializer(SavingsGoalModel.objects.filter(user=request.user), many=True).data,
+            "transaction_pin_set": user.transaction_pin_set
         }
         return success_response(data)
     
@@ -139,22 +145,27 @@ class InitiateWithdrawalAPIView(APIView):
                 "detail": "You don't have a wallet yet. Please verify your BVN or NIN to activate your wallet."
             }, status=status.HTTP_404_NOT_FOUND)
         
+        # Refresh user from database to get latest transaction_pin_set status
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+        user = User.objects.get(id=request.user.id)
+        
         # Check if transaction PIN is set
-        if not request.user.transaction_pin_set:
+        if not user.transaction_pin_set:
             return Response({
                 "status": False,
                 "detail": "Transaction PIN not set. Please set your transaction PIN first."
             }, status=status.HTTP_400_BAD_REQUEST)
         
         # Verify transaction PIN
-        if not request.user.verify_transaction_pin(transaction_pin):
+        if not user.verify_transaction_pin(transaction_pin):
             return Response({
                 "status": False,
                 "detail": "Invalid transaction PIN."
             }, status=status.HTTP_400_BAD_REQUEST)
         
-        # Validate account name matches user's verified name
-        user_verified_name = request.user.get_verified_name()
+        # Validate account name matches user's verified name (use refreshed user)
+        user_verified_name = user.get_verified_name()
         if not user_verified_name:
             return Response({
                 "status": False,
@@ -458,9 +469,14 @@ class SetTransactionPinAPIView(APIView):
         try:
             was_set = request.user.transaction_pin_set
             request.user.set_transaction_pin(pin)
+            # Refresh user from database to get updated transaction_pin_set
+            from django.contrib.auth import get_user_model
+            User = get_user_model()
+            request.user.refresh_from_db()
             return Response({
                 "status": True,
-                "detail": "Transaction PIN updated successfully." if was_set else "Transaction PIN set successfully."
+                "detail": "Transaction PIN updated successfully." if was_set else "Transaction PIN set successfully.",
+                "transaction_pin_set": request.user.transaction_pin_set
             }, status=status.HTTP_200_OK)
         except ValueError as e:
             return Response({
@@ -503,6 +519,26 @@ class VerifyTransactionPinAPIView(APIView):
             "status": True,
             "valid": is_valid,
             "detail": "PIN is valid." if is_valid else "Invalid PIN."
+        }, status=status.HTTP_200_OK)
+
+
+class TransactionPinStatusAPIView(APIView):
+    """
+    API endpoint to check if transaction PIN is set.
+    Useful for frontend to determine if PIN setup is needed.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, *args, **kwargs):
+        # Refresh from database to get latest status
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+        user = User.objects.get(id=request.user.id)
+        
+        return Response({
+            "status": True,
+            "transaction_pin_set": user.transaction_pin_set,
+            "detail": "Transaction PIN is set." if user.transaction_pin_set else "Transaction PIN not set."
         }, status=status.HTTP_200_OK)
 
 

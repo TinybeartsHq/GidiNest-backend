@@ -10,7 +10,8 @@ from .views import (
     GetBanksAPIView,
     CheckWithdrawalStatusAPIView,
     SetTransactionPinAPIView,
-    VerifyTransactionPinAPIView
+    VerifyTransactionPinAPIView,
+    TransactionPinStatusAPIView
 )
 
 urlpatterns = [
@@ -29,6 +30,8 @@ urlpatterns = [
     path('transaction-pin/set', SetTransactionPinAPIView.as_view(), name='set_transaction_pin'),
 
     path('transaction-pin/verify', VerifyTransactionPinAPIView.as_view(), name='verify_transaction_pin'),
+
+    path('transaction-pin/status', TransactionPinStatusAPIView.as_view(), name='transaction_pin_status'),
 
     path('embedly/webhook/secure', EmbedlyWebhookView.as_view(), name='embedly-webhook'),
 
