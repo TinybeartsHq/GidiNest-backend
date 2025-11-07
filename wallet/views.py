@@ -904,44 +904,120 @@ class EmbedlyWebhookView(APIView):
             or request.headers.get('x-signature')
             or request.headers.get('x-embed-signature')
         )
+        
+        # Check if signature verification should be skipped (for testing/debugging)
+        skip_signature_verification = getattr(settings, 'EMBEDLY_SKIP_WEBHOOK_SIGNATURE', False)
+        
         if not provided_signature:
-            logger.error("Missing webhook signature header", extra={
-                "all_headers": dict(request.headers)
-            })
-            return JsonResponse({'error': 'Missing signature'}, status=400)
+            if skip_signature_verification:
+                logger.warning("Missing webhook signature header, but signature verification is disabled")
+            else:
+                logger.error("Missing webhook signature header", extra={
+                    "all_headers": dict(request.headers)
+                })
+                return JsonResponse({'error': 'Missing signature'}, status=400)
         
         # Try multiple possible secrets - Embedly might use different secrets for webhooks
-        secret_candidates = [
+        # Filter out URLs (common mistake - people set webhook URL instead of secret)
+        raw_secrets = [
             getattr(settings, 'EMBEDLY_WEBHOOK_SECRET', None),
             getattr(settings, 'EMBEDLY_WEBHOOK_KEY', None),
-            getattr(settings, 'EMBEDLY_API_KEY_PRODUCTION', None),
+            getattr(settings, 'EMBEDLY_API_KEY_PRODUCTION', None),  # Most common - API key is often used for webhook signing
             getattr(settings, 'EMBEDLY_ORGANIZATION_ID_PRODUCTION', None),  # Some providers use org ID
         ]
-        secret_candidates = [s for s in secret_candidates if s]
+        # Filter out None values and URLs (common configuration mistake)
+        secret_candidates = [
+            s for s in raw_secrets 
+            if s and not (isinstance(s, str) and (s.startswith('http://') or s.startswith('https://')))
+        ]
+        
+        # Warn if webhook secret looks like a URL
+        webhook_secret = getattr(settings, 'EMBEDLY_WEBHOOK_SECRET', None)
+        if webhook_secret and isinstance(webhook_secret, str) and (webhook_secret.startswith('http://') or webhook_secret.startswith('https://')):
+            logger.warning(
+                f"EMBEDLY_WEBHOOK_SECRET appears to be a URL, not a secret key! "
+                f"Will try using API key instead. If Embedly doesn't provide a separate webhook secret, "
+                f"they likely use the API key for signing."
+            )
         
         if not secret_candidates:
             logger.error("No webhook secrets configured! Check EMBEDLY_WEBHOOK_SECRET or EMBEDLY_API_KEY_PRODUCTION")
             return JsonResponse({'error': 'Webhook secret not configured'}, status=500)
+        
+        # Log which secrets we're trying (for debugging)
+        logger.info(f"Attempting webhook signature verification with {len(secret_candidates)} secret(s)")
 
-        def _matches(sig: str, secret: str) -> bool:
+        def _matches(sig: str, secret: str, body_data=None) -> bool:
             # Embedly uses sha256(secret) format per documentation
             # Handle different signature formats:
             # - "sha256=hexdigest" or "sha256:hexdigest"
             # - Just the hexdigest (most common)
             normalized = sig.split('=')[-1].split(':')[-1].strip().lower()
-            body_bytes = raw_body.encode('utf-8')
             
-            # Embedly uses SHA256 according to their docs, but try both for compatibility
-            for algo in (hashlib.sha256, hashlib.sha512):
+            # Try different body encodings - some providers sign raw bytes, some sign JSON string
+            body_variants = []
+            if body_data is None:
+                body_variants = [
+                    raw_body.encode('utf-8'),  # Original UTF-8 encoded
+                    raw_body,  # As string (some providers sign the string)
+                ]
+                # Try with/without whitespace normalization
                 try:
-                    digest = hmac.new(secret.encode('utf-8'), body_bytes, algo).hexdigest().lower()
+                    import json
+                    parsed = json.loads(raw_body)
+                    normalized_json = json.dumps(parsed, separators=(',', ':'))  # Compact JSON
+                    body_variants.append(normalized_json.encode('utf-8'))
+                    body_variants.append(normalized_json)
+                except:
+                    pass
+            else:
+                body_variants = [body_data]
+            
+            # Try SHA256 first (most common, and signature is 128 hex chars = 64 bytes = SHA256)
+            for body_variant in body_variants:
+                if isinstance(body_variant, str):
+                    body_bytes = body_variant.encode('utf-8')
+                else:
+                    body_bytes = body_variant
+                
+                try:
+                    digest = hmac.new(secret.encode('utf-8'), body_bytes, hashlib.sha256).hexdigest().lower()
                     if hmac.compare_digest(digest, normalized):
+                        logger.info(f"Signature verified successfully using SHA256")
                         return True
-                except Exception:
+                except Exception as e:
+                    logger.debug(f"Error verifying: {e}")
                     continue
+            
             return False
 
-        verified = any(_matches(provided_signature, secret) for secret in secret_candidates)
+        # Skip verification if disabled (for testing) or if no signature provided and skipping is enabled
+        if skip_signature_verification and not provided_signature:
+            verified = True
+            logger.warning("Skipping webhook signature verification (EMBEDLY_SKIP_WEBHOOK_SIGNATURE=True)")
+        elif skip_signature_verification:
+            verified = True
+            logger.warning("Skipping webhook signature verification (EMBEDLY_SKIP_WEBHOOK_SIGNATURE=True) - signature present but not verified")
+        else:
+            # Try each secret individually
+            verified = any(_matches(provided_signature, secret) for secret in secret_candidates)
+            
+            # If that fails, try combinations (API key + Org ID is sometimes used)
+            if not verified and len(secret_candidates) >= 2:
+                api_key = getattr(settings, 'EMBEDLY_API_KEY_PRODUCTION', None)
+                org_id = getattr(settings, 'EMBEDLY_ORGANIZATION_ID_PRODUCTION', None)
+                if api_key and org_id and api_key in secret_candidates and org_id in secret_candidates:
+                    # Try API key + Org ID combination
+                    combined_secrets = [
+                        f"{api_key}{org_id}",
+                        f"{org_id}{api_key}",
+                        f"{api_key}:{org_id}",
+                        f"{org_id}:{api_key}",
+                    ]
+                    verified = any(_matches(provided_signature, combo) for combo in combined_secrets)
+                    if verified:
+                        logger.info("Signature verified using API key + Organization ID combination")
+        
         if not verified:
             # Enhanced logging for debugging - print detailed info
             all_headers = dict(request.headers)
@@ -951,6 +1027,21 @@ class EmbedlyWebhookView(APIView):
                 "x-signature": request.headers.get('x-signature') or "NOT FOUND",
                 "x-embed-signature": request.headers.get('x-embed-signature') or "NOT FOUND",
             }
+            
+            # Try to compute what the signature should be for debugging
+            debug_info = []
+            if provided_signature and secret_candidates:
+                normalized_sig = provided_signature.split('=')[-1].split(':')[-1].strip().lower()
+                body_bytes = raw_body.encode('utf-8')
+                for i, secret in enumerate(secret_candidates):
+                    try:
+                        # Try SHA256
+                        expected_sha256 = hmac.new(secret.encode('utf-8'), body_bytes, hashlib.sha256).hexdigest().lower()
+                        debug_info.append(f"Secret {i+1} (SHA256): {expected_sha256[:40]}...")
+                        if expected_sha256 == normalized_sig:
+                            debug_info.append(f"  ✓ MATCH FOUND with Secret {i+1}!")
+                    except Exception:
+                        pass
             
             # Log detailed information
             logger.error(
@@ -967,12 +1058,16 @@ class EmbedlyWebhookView(APIView):
             print("WEBHOOK SIGNATURE VERIFICATION FAILED")
             print(f"{'='*70}")
             print(f"Signature received: {provided_signature[:60] if provided_signature else 'NONE'}...")
-            print(f"Signature length: {len(provided_signature) if provided_signature else 0}")
+            print(f"Signature length: {len(provided_signature) if provided_signature else 0} chars")
             print(f"Secrets available: {len(secret_candidates)}")
             print(f"Headers found:")
             for key, value in header_info.items():
                 print(f"  {key}: {value[:60] if value != 'NOT FOUND' else value}")
             print(f"Body length: {len(raw_body)} bytes")
+            if debug_info:
+                print(f"\nComputed signatures (for debugging):")
+                for info in debug_info:
+                    print(f"  {info}")
             print(f"{'='*70}\n")
             
             return JsonResponse({'error': 'Invalid signature - authentication failed'}, status=403)
