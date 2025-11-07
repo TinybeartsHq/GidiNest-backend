@@ -943,24 +943,38 @@ class EmbedlyWebhookView(APIView):
 
         verified = any(_matches(provided_signature, secret) for secret in secret_candidates)
         if not verified:
-            # Enhanced logging for debugging
+            # Enhanced logging for debugging - print detailed info
             all_headers = dict(request.headers)
-            logger.warning(
-                "Embedly deposit webhook signature mismatch",
-                extra={
-                    "headers_present": {
-                        "X-Auth-Signature": bool(request.headers.get('X-Auth-Signature') or request.headers.get('x-auth-signature')),
-                        "x-embedly-signature": bool(request.headers.get('x-embedly-signature')),
-                        "x-signature": bool(request.headers.get('x-signature')),
-                        "x-embed-signature": bool(request.headers.get('x-embed-signature')),
-                    },
-                    "sig_preview": provided_signature[:20].lower() if provided_signature else None,
-                    "sig_length": len(provided_signature) if provided_signature else 0,
-                    "all_headers": {k: v[:50] if len(v) > 50 else v for k, v in all_headers.items()},
-                    "secrets_checked": len(secret_candidates),
-                    "body_length": len(raw_body),
-                }
+            header_info = {
+                "X-Auth-Signature": request.headers.get('X-Auth-Signature') or request.headers.get('x-auth-signature') or "NOT FOUND",
+                "x-embedly-signature": request.headers.get('x-embedly-signature') or "NOT FOUND",
+                "x-signature": request.headers.get('x-signature') or "NOT FOUND",
+                "x-embed-signature": request.headers.get('x-embed-signature') or "NOT FOUND",
+            }
+            
+            # Log detailed information
+            logger.error(
+                f"Embedly deposit webhook signature mismatch - "
+                f"Signature: {provided_signature[:40] if provided_signature else 'NONE'}... | "
+                f"Length: {len(provided_signature) if provided_signature else 0} | "
+                f"Secrets checked: {len(secret_candidates)} | "
+                f"Body length: {len(raw_body)} | "
+                f"Headers: {header_info}"
             )
+            
+            # Also print to console for immediate visibility
+            print(f"\n{'='*70}")
+            print("WEBHOOK SIGNATURE VERIFICATION FAILED")
+            print(f"{'='*70}")
+            print(f"Signature received: {provided_signature[:60] if provided_signature else 'NONE'}...")
+            print(f"Signature length: {len(provided_signature) if provided_signature else 0}")
+            print(f"Secrets available: {len(secret_candidates)}")
+            print(f"Headers found:")
+            for key, value in header_info.items():
+                print(f"  {key}: {value[:60] if value != 'NOT FOUND' else value}")
+            print(f"Body length: {len(raw_body)} bytes")
+            print(f"{'='*70}\n")
+            
             return JsonResponse({'error': 'Invalid signature - authentication failed'}, status=403)
 
         # Parse the JSON payload
