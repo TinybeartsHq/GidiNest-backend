@@ -883,8 +883,12 @@ class PayoutWebhookView(APIView):
 
 
 class EmbedlyWebhookView(APIView):
-
+    """
+    Webhook handler for Embedly deposit (NIP) events.
+    Disables DRF parsers to ensure we get raw body for signature verification.
+    """
     permission_classes = [permissions.AllowAny]
+    parser_classes = []  # Disable DRF parsers to get raw body
 
     def post(self, request, *args, **kwargs):
         import logging
@@ -992,15 +996,22 @@ class EmbedlyWebhookView(APIView):
                     hashlib.sha512
                 ).hexdigest().lower()
                 
+                # Log the comparison for debugging
+                logger.info(f"Comparing signatures:")
+                logger.info(f"  Received:  {normalized[:60]}...")
+                logger.info(f"  Computed:  {computed_signature[:60]}...")
+                logger.info(f"  Match: {computed_signature == normalized}")
+                
                 if hmac.compare_digest(computed_signature, normalized):
                     logger.info(f"✓ Signature verified successfully using SHA512 with API key")
                     return True
                 else:
-                    logger.warning(f"Signature mismatch:")
-                    logger.warning(f"  Received:    {normalized[:60]}...")
-                    logger.warning(f"  Computed:   {computed_signature[:60]}...")
+                    logger.warning(f"✗ Signature mismatch - Full comparison:")
+                    logger.warning(f"  Received (full):  {normalized}")
+                    logger.warning(f"  Computed (full): {computed_signature}")
                     logger.warning(f"  Body length: {len(raw_body)} chars")
-                    logger.warning(f"  Body preview: {raw_body[:100]}...")
+                    logger.warning(f"  Body (first 200): {raw_body[:200]}")
+                    logger.warning(f"  Body (last 50): ...{raw_body[-50:]}")
                     return False
             except Exception as e:
                 logger.error(f"Error verifying signature: {e}", exc_info=True)
