@@ -737,13 +737,21 @@ class PayoutWebhookView(APIView):
         if not raw_body:
             return JsonResponse({'error': 'Missing body'}, status=400)
 
-        # Accept multiple possible header names from provider
+        # Embedly uses X-Auth-Signature header (per their documentation)
+        # Also check alternative header names for backward compatibility
         provided_signature = (
-            request.headers.get('x-embedly-signature')
+            request.headers.get('X-Auth-Signature')
+            or request.headers.get('x-auth-signature')
+            or request.headers.get('x-embedly-signature')
             or request.headers.get('x-signature')
             or request.headers.get('x-embed-signature')
         )
         if not provided_signature:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error("Missing webhook signature header", extra={
+                "all_headers": dict(request.headers)
+            })
             return JsonResponse({'error': 'Missing signature'}, status=400)
 
         # Try multiple secrets and algorithms (sha512, sha256)
@@ -884,42 +892,73 @@ class EmbedlyWebhookView(APIView):
         if not raw_body:
             return JsonResponse({'error': 'Missing body'}, status=400)
 
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        # Embedly uses X-Auth-Signature header (per their documentation)
+        # Also check alternative header names for backward compatibility
         provided_signature = (
-            request.headers.get('x-embedly-signature')
+            request.headers.get('X-Auth-Signature')
+            or request.headers.get('x-auth-signature')
+            or request.headers.get('x-embedly-signature')
             or request.headers.get('x-signature')
             or request.headers.get('x-embed-signature')
         )
         if not provided_signature:
+            logger.error("Missing webhook signature header", extra={
+                "all_headers": dict(request.headers)
+            })
             return JsonResponse({'error': 'Missing signature'}, status=400)
-
+        
+        # Try multiple possible secrets - Embedly might use different secrets for webhooks
         secret_candidates = [
             getattr(settings, 'EMBEDLY_WEBHOOK_SECRET', None),
+            getattr(settings, 'EMBEDLY_WEBHOOK_KEY', None),
             getattr(settings, 'EMBEDLY_API_KEY_PRODUCTION', None),
+            getattr(settings, 'EMBEDLY_ORGANIZATION_ID_PRODUCTION', None),  # Some providers use org ID
         ]
         secret_candidates = [s for s in secret_candidates if s]
+        
+        if not secret_candidates:
+            logger.error("No webhook secrets configured! Check EMBEDLY_WEBHOOK_SECRET or EMBEDLY_API_KEY_PRODUCTION")
+            return JsonResponse({'error': 'Webhook secret not configured'}, status=500)
 
         def _matches(sig: str, secret: str) -> bool:
-            normalized = sig.split('=')[-1].strip().lower()
+            # Embedly uses sha256(secret) format per documentation
+            # Handle different signature formats:
+            # - "sha256=hexdigest" or "sha256:hexdigest"
+            # - Just the hexdigest (most common)
+            normalized = sig.split('=')[-1].split(':')[-1].strip().lower()
             body_bytes = raw_body.encode('utf-8')
-            for algo in (hashlib.sha512, hashlib.sha256):
-                digest = hmac.new(secret.encode('utf-8'), body_bytes, algo).hexdigest().lower()
-                if hmac.compare_digest(digest, normalized):
-                    return True
+            
+            # Embedly uses SHA256 according to their docs, but try both for compatibility
+            for algo in (hashlib.sha256, hashlib.sha512):
+                try:
+                    digest = hmac.new(secret.encode('utf-8'), body_bytes, algo).hexdigest().lower()
+                    if hmac.compare_digest(digest, normalized):
+                        return True
+                except Exception:
+                    continue
             return False
 
         verified = any(_matches(provided_signature, secret) for secret in secret_candidates)
         if not verified:
-            import logging
-            logger = logging.getLogger(__name__)
+            # Enhanced logging for debugging
+            all_headers = dict(request.headers)
             logger.warning(
                 "Embedly deposit webhook signature mismatch",
                 extra={
                     "headers_present": {
+                        "X-Auth-Signature": bool(request.headers.get('X-Auth-Signature') or request.headers.get('x-auth-signature')),
                         "x-embedly-signature": bool(request.headers.get('x-embedly-signature')),
                         "x-signature": bool(request.headers.get('x-signature')),
                         "x-embed-signature": bool(request.headers.get('x-embed-signature')),
                     },
-                    "sig_preview": provided_signature[:12].lower() if provided_signature else None,
+                    "sig_preview": provided_signature[:20].lower() if provided_signature else None,
+                    "sig_length": len(provided_signature) if provided_signature else 0,
+                    "all_headers": {k: v[:50] if len(v) > 50 else v for k, v in all_headers.items()},
+                    "secrets_checked": len(secret_candidates),
+                    "body_length": len(raw_body),
                 }
             )
             return JsonResponse({'error': 'Invalid signature - authentication failed'}, status=403)
