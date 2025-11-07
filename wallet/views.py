@@ -887,13 +887,23 @@ class EmbedlyWebhookView(APIView):
     permission_classes = [permissions.AllowAny]
 
     def post(self, request, *args, **kwargs):
-        raw_body = request.body.decode('utf-8')
-
-        if not raw_body:
-            return JsonResponse({'error': 'Missing body'}, status=400)
-
         import logging
         logger = logging.getLogger(__name__)
+        
+        # Log immediately when webhook is received
+        logger.info("="*70)
+        logger.info("EMBEDLY WEBHOOK RECEIVED - Processing started")
+        logger.info(f"Request method: {request.method}")
+        logger.info(f"Request path: {request.path}")
+        logger.info(f"Headers: {dict(request.headers)}")
+        
+        raw_body = request.body.decode('utf-8')
+        logger.info(f"Body length: {len(raw_body)} bytes")
+        logger.info(f"Body preview: {raw_body[:200]}...")
+
+        if not raw_body:
+            logger.error("Webhook rejected: Missing body")
+            return JsonResponse({'error': 'Missing body'}, status=400)
         
         # Embedly uses X-Auth-Signature header (per their documentation)
         # Also check alternative header names for backward compatibility
@@ -906,7 +916,15 @@ class EmbedlyWebhookView(APIView):
         )
         
         # Check if signature verification should be skipped (for testing/debugging)
+        # TEMPORARILY DISABLE SIGNATURE VERIFICATION TO TEST WEBHOOKS
+        # Set EMBEDLY_SKIP_WEBHOOK_SIGNATURE=true in .env to enable this
         skip_signature_verification = getattr(settings, 'EMBEDLY_SKIP_WEBHOOK_SIGNATURE', False)
+        
+        # Log signature status
+        logger.info(f"Signature verification: {'DISABLED (testing mode)' if skip_signature_verification else 'ENABLED'}")
+        logger.info(f"Signature header found: {bool(provided_signature)}")
+        if provided_signature:
+            logger.info(f"Signature preview: {provided_signature[:40]}...")
         
         if not provided_signature:
             if skip_signature_verification:
@@ -917,13 +935,13 @@ class EmbedlyWebhookView(APIView):
                 })
                 return JsonResponse({'error': 'Missing signature'}, status=400)
         
-        # Try multiple possible secrets - Embedly might use different secrets for webhooks
-        # Filter out URLs (common mistake - people set webhook URL instead of secret)
+        # Embedly uses API key for webhook signature verification (per their documentation)
+        # Format: sha512(notification payload, api_key)
+        # So we use the API key as the secret
         raw_secrets = [
-            getattr(settings, 'EMBEDLY_WEBHOOK_SECRET', None),
-            getattr(settings, 'EMBEDLY_WEBHOOK_KEY', None),
-            getattr(settings, 'EMBEDLY_API_KEY_PRODUCTION', None),  # Most common - API key is often used for webhook signing
-            getattr(settings, 'EMBEDLY_ORGANIZATION_ID_PRODUCTION', None),  # Some providers use org ID
+            getattr(settings, 'EMBEDLY_API_KEY_PRODUCTION', None),  # Primary - API key is used for signing
+            getattr(settings, 'EMBEDLY_WEBHOOK_SECRET', None),  # Fallback if separate secret exists
+            getattr(settings, 'EMBEDLY_WEBHOOK_KEY', None),  # Alternative name
         ]
         # Filter out None values and URLs (common configuration mistake)
         secret_candidates = [
@@ -948,48 +966,36 @@ class EmbedlyWebhookView(APIView):
         logger.info(f"Attempting webhook signature verification with {len(secret_candidates)} secret(s)")
 
         def _matches(sig: str, secret: str, body_data=None) -> bool:
-            # Embedly uses sha256(secret) format per documentation
-            # Handle different signature formats:
-            # - "sha256=hexdigest" or "sha256:hexdigest"
-            # - Just the hexdigest (most common)
+            # Embedly uses sha512(notification payload, api_key) per their documentation
+            # Signature format: Just the hexdigest (no prefix like "sha512=" or "sha512:")
             normalized = sig.split('=')[-1].split(':')[-1].strip().lower()
             
-            # Try different body encodings - some providers sign raw bytes, some sign JSON string
-            body_variants = []
+            # Use raw body as string (per Embedly docs: sha512(notification payload, api_key))
+            # The payload is the raw JSON string body
             if body_data is None:
-                body_variants = [
-                    raw_body.encode('utf-8'),  # Original UTF-8 encoded
-                    raw_body,  # As string (some providers sign the string)
-                ]
-                # Try with/without whitespace normalization
-                try:
-                    import json
-                    parsed = json.loads(raw_body)
-                    normalized_json = json.dumps(parsed, separators=(',', ':'))  # Compact JSON
-                    body_variants.append(normalized_json.encode('utf-8'))
-                    body_variants.append(normalized_json)
-                except:
-                    pass
+                body_to_sign = raw_body  # Use raw body as string
             else:
-                body_variants = [body_data]
+                body_to_sign = body_data if isinstance(body_data, str) else body_data.decode('utf-8')
             
-            # Try SHA256 first (most common, and signature is 128 hex chars = 64 bytes = SHA256)
-            for body_variant in body_variants:
-                if isinstance(body_variant, str):
-                    body_bytes = body_variant.encode('utf-8')
-                else:
-                    body_bytes = body_variant
+            try:
+                # Embedly uses SHA512 with API key as secret
+                # Format: hmac-sha512(raw_body_string, api_key)
+                body_bytes = body_to_sign.encode('utf-8')
+                computed_signature = hmac.new(
+                    secret.encode('utf-8'), 
+                    body_bytes, 
+                    hashlib.sha512
+                ).hexdigest().lower()
                 
-                try:
-                    digest = hmac.new(secret.encode('utf-8'), body_bytes, hashlib.sha256).hexdigest().lower()
-                    if hmac.compare_digest(digest, normalized):
-                        logger.info(f"Signature verified successfully using SHA256")
-                        return True
-                except Exception as e:
-                    logger.debug(f"Error verifying: {e}")
-                    continue
-            
-            return False
+                if hmac.compare_digest(computed_signature, normalized):
+                    logger.info(f"✓ Signature verified successfully using SHA512 with API key")
+                    return True
+                else:
+                    logger.debug(f"Signature mismatch - Expected: {normalized[:20]}..., Got: {computed_signature[:20]}...")
+                    return False
+            except Exception as e:
+                logger.error(f"Error verifying signature: {e}", exc_info=True)
+                return False
 
         # Skip verification if disabled (for testing) or if no signature provided and skipping is enabled
         if skip_signature_verification and not provided_signature:
@@ -1002,21 +1008,7 @@ class EmbedlyWebhookView(APIView):
             # Try each secret individually
             verified = any(_matches(provided_signature, secret) for secret in secret_candidates)
             
-            # If that fails, try combinations (API key + Org ID is sometimes used)
-            if not verified and len(secret_candidates) >= 2:
-                api_key = getattr(settings, 'EMBEDLY_API_KEY_PRODUCTION', None)
-                org_id = getattr(settings, 'EMBEDLY_ORGANIZATION_ID_PRODUCTION', None)
-                if api_key and org_id and api_key in secret_candidates and org_id in secret_candidates:
-                    # Try API key + Org ID combination
-                    combined_secrets = [
-                        f"{api_key}{org_id}",
-                        f"{org_id}{api_key}",
-                        f"{api_key}:{org_id}",
-                        f"{org_id}:{api_key}",
-                    ]
-                    verified = any(_matches(provided_signature, combo) for combo in combined_secrets)
-                    if verified:
-                        logger.info("Signature verified using API key + Organization ID combination")
+            # Note: Embedly uses API key directly, no combinations needed
         
         if not verified:
             # Enhanced logging for debugging - print detailed info
@@ -1079,9 +1071,17 @@ class EmbedlyWebhookView(APIView):
             return JsonResponse({'error': 'Invalid JSON'}, status=400)
 
         # Check the event type
-        if payload.get('event') == 'nip':
-            return self.handle_nip_event(payload)
+        event_type = payload.get('event')
+        logger.info(f"Webhook event type: {event_type}")
+        logger.info(f"Payload keys: {list(payload.keys())}")
+        
+        if event_type == 'nip':
+            logger.info("Processing NIP event (deposit)")
+            result = self.handle_nip_event(payload)
+            logger.info("NIP event processing completed")
+            return result
         else:
+            logger.warning(f"Unsupported event type: {event_type}")
             return JsonResponse({'error': 'Unsupported event'}, status=400)
 
     def handle_nip_event(self, payload):
