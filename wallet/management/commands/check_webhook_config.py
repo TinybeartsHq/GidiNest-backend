@@ -61,3 +61,4 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS('Check complete!'))
         self.stdout.write('='*70 + '\n')
 
+

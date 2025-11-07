@@ -108,3 +108,4 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS('Test complete!'))
         self.stdout.write('='*70 + '\n')
 
+
