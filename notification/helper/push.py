@@ -1,15 +1,30 @@
 # notifications/utils.py
 
-from firebase_admin import messaging
-from notification.lib.firebase import firebase_admin  # Ensure firebase is initialized
 from account.models.users import UserModel
 from account.models import UserDevices
+
+# Optional Firebase import - handle gracefully if not configured
+try:
+    from firebase_admin import messaging
+    import firebase_admin
+    # Check if Firebase is initialized
+    try:
+        firebase_admin.get_app()
+        FIREBASE_AVAILABLE = True
+    except ValueError:
+        # Firebase not initialized
+        FIREBASE_AVAILABLE = False
+except (ImportError, Exception):
+    FIREBASE_AVAILABLE = False
 
 
 def send_push_notification_to_user(user: UserModel, title: str, message: str):
     """
     Sends a push notification to all active devices of a given user.
     """
+    if not FIREBASE_AVAILABLE:
+        return  # Silently skip if Firebase is not configured
+    
     devices = UserDevices.objects.filter(
         user=user, active=True
     ).exclude(fcm_token__isnull=True).exclude(fcm_token__exact='')

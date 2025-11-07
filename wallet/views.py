@@ -10,8 +10,17 @@ from django.core.exceptions import ObjectDoesNotExist
 
 from core.helpers.response import success_response, error_response
 from notification.helper.email import MailClient
-from notification.helper.push import send_push_notification_to_user
 from providers.helpers.cuoral import CuoralAPI
+
+# Optional push notification import - don't fail if Firebase isn't configured
+try:
+    from notification.helper.push import send_push_notification_to_user
+    PUSH_NOTIFICATIONS_AVAILABLE = True
+except (ImportError, FileNotFoundError, Exception):
+    PUSH_NOTIFICATIONS_AVAILABLE = False
+    def send_push_notification_to_user(*args, **kwargs):
+        """Dummy function when push notifications are not available"""
+        pass
 from providers.helpers.embedly import EmbedlyClient
 from savings.models import SavingsGoalModel
 from savings.serializers import SavingsGoalSerializer
@@ -1008,13 +1017,16 @@ class EmbedlyWebhookView(APIView):
             logger.error(f"Failed to send email notification: {str(email_error)}")
 
         try:
-            # Push notification
-            send_push_notification_to_user(
-                user=wallet.user,
-                title="Credit Alert",
-                message=f"You just received {wallet.currency} {amount} from {sender_name}."
-            )
-            logger.info(f"Push notification sent to user {wallet.user.email}")
+            # Push notification (only if available)
+            if PUSH_NOTIFICATIONS_AVAILABLE:
+                send_push_notification_to_user(
+                    user=wallet.user,
+                    title="Credit Alert",
+                    message=f"You just received {wallet.currency} {amount} from {sender_name}."
+                )
+                logger.info(f"Push notification sent to user {wallet.user.email}")
+            else:
+                logger.debug("Push notifications not available (Firebase not configured)")
         except Exception as push_error:
             logger.error(f"Failed to send push notification: {str(push_error)}")
 
