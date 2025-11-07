@@ -1,5 +1,5 @@
 # wallet/views.py
-from django.db import IntegrityError
+from django.db import IntegrityError, transaction
 from django.http import JsonResponse
 import requests
 from rest_framework import status
@@ -10,6 +10,7 @@ from django.core.exceptions import ObjectDoesNotExist
 
 from core.helpers.response import success_response, error_response
 from notification.helper.email import MailClient
+from notification.helper.push import send_push_notification_to_user
 from providers.helpers.cuoral import CuoralAPI
 from providers.helpers.embedly import EmbedlyClient
 from savings.models import SavingsGoalModel
@@ -32,6 +33,7 @@ from django.conf import settings
 from django.utils.decorators import method_decorator
 from django.views import View
 import json
+import logging
 
 from decimal import Decimal
 
@@ -933,48 +935,93 @@ class EmbedlyWebhookView(APIView):
         senderBank = data.get('senderBank')
         amount = data.get('amount')
         sender_name = data.get('senderName')
- 
+        
+        logger = logging.getLogger(__name__)
+        
         try:
             wallet = Wallet.objects.get(account_number=account_number)
         except Wallet.DoesNotExist:
+            logger.error(f"Wallet not found for account_number: {account_number}")
             return JsonResponse({'error': 'Wallet not found'}, status=404)
 
+        # Use atomic transaction to ensure both transaction record and balance update succeed together
         try:
-            transaction = WalletTransaction.objects.create(
-                wallet=wallet,
-                transaction_type='credit',  # This is a credit to the wallet
-                amount=amount,
-                description=f"Transfer from {sender_name} via NIP reference {reference}",
-                sender_name=sender_name,
-                sender_account=senderBank,
-                external_reference=reference
-            )
+            with transaction.atomic():
+                # Check if transaction already exists
+                if WalletTransaction.objects.filter(external_reference=reference).exists():
+                    logger.warning(f"Transaction with reference {reference} already processed")
+                    return JsonResponse({'error': 'Transaction with this reference has been processed'}, status=200)
+                
+                # Create transaction record
+                wallet_transaction = WalletTransaction.objects.create(
+                    wallet=wallet,
+                    transaction_type='credit',  # This is a credit to the wallet
+                    amount=amount,
+                    description=f"Transfer from {sender_name} via NIP reference {reference}",
+                    sender_name=sender_name,
+                    sender_account=senderBank,
+                    external_reference=reference
+                )
+                
+                # Update the wallet balance (ensure Decimal)
+                try:
+                    wallet.deposit(Decimal(str(amount)))
+                    logger.info(f"Successfully credited {amount} to wallet {wallet.account_number} for user {wallet.user.email}")
+                except Exception as deposit_error:
+                    logger.error(f"Failed to deposit {amount} to wallet {wallet.account_number}: {str(deposit_error)}")
+                    raise  # Re-raise to rollback the transaction
+                
         except IntegrityError as e:
-            return JsonResponse({'error': f'Transaction with this reference has been processed'}, status=200)
+            logger.warning(f"IntegrityError for reference {reference}: {str(e)}")
+            return JsonResponse({'error': 'Transaction with this reference has been processed'}, status=200)
+        except Exception as e:
+            logger.error(f"Error processing credit transaction for account {account_number}: {str(e)}", exc_info=True)
+            return JsonResponse({'error': 'Failed to process transaction'}, status=500)
 
-        # Update the wallet balance (ensure Decimal)
-        wallet.deposit(Decimal(str(amount)))
+        # Send notifications (non-blocking - don't fail webhook if notifications fail)
+        try:
+            # SMS notification
+            cuoral_client = CuoralAPI()
+            cuoral_client.send_sms(
+                wallet.user.phone,
+                f"You just received {wallet.currency} {amount} from {sender_name}."
+            )
+            logger.info(f"SMS notification sent to {wallet.user.phone}")
+        except Exception as sms_error:
+            logger.error(f"Failed to send SMS notification: {str(sms_error)}")
 
-        #send notification to user sms and email
-        cuoral_client = CuoralAPI()
-        cuoral_client.send_sms(wallet.user.phone,f"You just received {wallet.currency} {amount} from {sender_name}.")
-
-        emailclient = MailClient()
-        emailclient.send_email(
+        try:
+            # Email notification
+            emailclient = MailClient()
+            emailclient.send_email(
                 to_email=wallet.user.email,
                 subject="Credit Alert",
                 template_name="emails/credit.html",
-                context= {
+                context={
                     "sender_name": sender_name,
                     "amount": f"{wallet.currency} {amount}",
                 },
                 to_name=wallet.user.first_name
             )
+            logger.info(f"Email notification sent to {wallet.user.email}")
+        except Exception as email_error:
+            logger.error(f"Failed to send email notification: {str(email_error)}")
+
+        try:
+            # Push notification
+            send_push_notification_to_user(
+                user=wallet.user,
+                title="Credit Alert",
+                message=f"You just received {wallet.currency} {amount} from {sender_name}."
+            )
+            logger.info(f"Push notification sent to user {wallet.user.email}")
+        except Exception as push_error:
+            logger.error(f"Failed to send push notification: {str(push_error)}")
 
         # Return a success response
         return JsonResponse({
             'status': 'success',
             'message': 'Webhook received and wallet updated',
             'data': payload,
-            'timestamp': str(transaction.created_at)
+            'timestamp': str(wallet_transaction.created_at)
         }, status=200)
