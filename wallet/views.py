@@ -966,19 +966,29 @@ class EmbedlyWebhookView(APIView):
         
         # Log which secrets we're trying (for debugging)
         logger.info(f"Attempting webhook signature verification with {len(secret_candidates)} secret(s)")
+        if secret_candidates:
+            logger.info(f"First secret preview: {secret_candidates[0][:10]}...{secret_candidates[0][-4:] if len(secret_candidates[0]) > 14 else ''} (length: {len(secret_candidates[0])})")
 
         def _matches(sig: str, secret: str) -> bool:
             # Embedly uses sha512(notification payload, api_key) per their documentation
+            # Per their example: hmac.update(rawBody, "utf8") where rawBody is a string
             # Signature format: Just the hexdigest (no prefix like "sha512=" or "sha512:")
             normalized = sig.split('=')[-1].split(':')[-1].strip().lower()
             
             try:
-                # Embedly uses SHA512 with API key as secret
-                # Format: hmac-sha512(raw_body_bytes, api_key)
-                # Use raw body bytes directly (as received from Embedly)
+                # Embedly's JavaScript example:
+                # const hmac = crypto.createHmac("sha512", api_key);
+                # hmac.update(rawBody, "utf8");  // rawBody is a string
+                # const computedSignature = hmac.digest("hex");
+                
+                # In Python, we need to:
+                # 1. Use the raw body string (decoded from bytes)
+                # 2. Encode it to UTF-8 bytes for HMAC
+                # 3. Use SHA512
+                body_bytes = raw_body.encode('utf-8')
                 computed_signature = hmac.new(
                     secret.encode('utf-8'), 
-                    raw_body_bytes,  # Use raw bytes, not decoded string
+                    body_bytes,
                     hashlib.sha512
                 ).hexdigest().lower()
                 
@@ -986,7 +996,11 @@ class EmbedlyWebhookView(APIView):
                     logger.info(f"✓ Signature verified successfully using SHA512 with API key")
                     return True
                 else:
-                    logger.debug(f"Signature mismatch - Received: {normalized[:40]}..., Computed: {computed_signature[:40]}...")
+                    logger.warning(f"Signature mismatch:")
+                    logger.warning(f"  Received:    {normalized[:60]}...")
+                    logger.warning(f"  Computed:   {computed_signature[:60]}...")
+                    logger.warning(f"  Body length: {len(raw_body)} chars")
+                    logger.warning(f"  Body preview: {raw_body[:100]}...")
                     return False
             except Exception as e:
                 logger.error(f"Error verifying signature: {e}", exc_info=True)
@@ -1030,13 +1044,16 @@ class EmbedlyWebhookView(APIView):
                 body_bytes = raw_body.encode('utf-8')
                 for i, secret in enumerate(secret_candidates):
                     try:
-                        # Try SHA256
-                        expected_sha256 = hmac.new(secret.encode('utf-8'), body_bytes, hashlib.sha256).hexdigest().lower()
-                        debug_info.append(f"Secret {i+1} (SHA256): {expected_sha256[:40]}...")
-                        if expected_sha256 == normalized_sig:
+                        # Try SHA512 (correct algorithm per Embedly docs)
+                        expected_sha512 = hmac.new(secret.encode('utf-8'), body_bytes, hashlib.sha512).hexdigest().lower()
+                        debug_info.append(f"Secret {i+1} (SHA512): {expected_sha512[:60]}...")
+                        debug_info.append(f"  Received:    {normalized_sig[:60]}...")
+                        if expected_sha512 == normalized_sig:
                             debug_info.append(f"  ✓ MATCH FOUND with Secret {i+1}!")
-                    except Exception:
-                        pass
+                        else:
+                            debug_info.append(f"  ✗ No match (first 20 chars differ)")
+                    except Exception as e:
+                        debug_info.append(f"Secret {i+1} error: {str(e)}")
             
             # Log detailed information
             logger.error(
