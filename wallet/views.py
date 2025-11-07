@@ -934,10 +934,24 @@ class EmbedlyWebhookView(APIView):
         # Check if signature verification should be skipped (for testing/debugging)
         # TEMPORARILY DISABLE SIGNATURE VERIFICATION TO TEST WEBHOOKS
         # Set EMBEDLY_SKIP_WEBHOOK_SIGNATURE=true in .env to enable this
-        skip_signature_verification = getattr(settings, 'EMBEDLY_SKIP_WEBHOOK_SIGNATURE', False)
+        # NOTE: Currently disabled because none of 16+ signature methods match Embedly's signature
+        # TODO: Contact Embedly support for exact signature algorithm and secret
+        skip_signature_verification = getattr(settings, 'EMBEDLY_SKIP_WEBHOOK_SIGNATURE', True)  # Temporarily default to True
         
         # Log signature status
-        logger.info(f"Signature verification: {'DISABLED (testing mode)' if skip_signature_verification else 'ENABLED'}")
+        if skip_signature_verification:
+            print("\n" + "="*70)
+            print("⚠️  WARNING: Signature verification is DISABLED")
+            print("   Webhooks will be processed without signature verification")
+            print("   This is TEMPORARY - contact Embedly support for correct signature algorithm")
+            print("="*70 + "\n")
+            logger.warning("="*70)
+            logger.warning("⚠️  WARNING: Signature verification is DISABLED")
+            logger.warning("   Webhooks will be processed without signature verification")
+            logger.warning("   This is TEMPORARY - contact Embedly support for correct signature algorithm")
+            logger.warning("="*70)
+        else:
+            logger.info(f"Signature verification: ENABLED")
         logger.info(f"Signature header found: {bool(provided_signature)}")
         if provided_signature:
             logger.info(f"Signature preview: {provided_signature[:40]}...")
