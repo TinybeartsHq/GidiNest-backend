@@ -954,12 +954,18 @@ class EmbedlyWebhookView(APIView):
         # Embedly uses API key for webhook signature verification (per their documentation)
         # Format: sha512(notification payload, api_key)
         # Try both API key and Organization ID as secrets (some providers use org ID)
+        api_key = getattr(settings, 'EMBEDLY_API_KEY_PRODUCTION', None)
+        org_id = getattr(settings, 'EMBEDLY_ORGANIZATION_ID_PRODUCTION', None)
         raw_secrets = [
-            getattr(settings, 'EMBEDLY_API_KEY_PRODUCTION', None),  # Primary - API key is used for signing
-            getattr(settings, 'EMBEDLY_ORGANIZATION_ID_PRODUCTION', None),  # Try org ID as well
+            api_key,  # Primary - API key is used for signing
+            org_id,  # Try org ID as well
             getattr(settings, 'EMBEDLY_WEBHOOK_SECRET', None),  # Fallback if separate secret exists
             getattr(settings, 'EMBEDLY_WEBHOOK_KEY', None),  # Alternative name
         ]
+        # Also try combined secrets (some providers concatenate API key + Org ID)
+        if api_key and org_id:
+            raw_secrets.append(f"{api_key}{org_id}")  # API key + Org ID
+            raw_secrets.append(f"{org_id}{api_key}")  # Org ID + API key
         # Filter out None values and URLs (common configuration mistake)
         secret_candidates = [
             s for s in raw_secrets 
@@ -1002,11 +1008,24 @@ class EmbedlyWebhookView(APIView):
                 # Some webhook providers normalize JSON before signing
                 try:
                     parsed_json = json.loads(body_str)
+                    # Try multiple JSON serialization formats
                     normalized_json = json.dumps(parsed_json, separators=(',', ':'), sort_keys=True)
                     normalized_json_bytes = normalized_json.encode('utf-8')
+                    
+                    # Try with ensure_ascii=False (preserve unicode)
+                    normalized_json_unicode = json.dumps(parsed_json, separators=(',', ':'), sort_keys=True, ensure_ascii=False)
+                    normalized_json_unicode_bytes = normalized_json_unicode.encode('utf-8')
+                    
+                    # Try without sorting keys (preserve original order)
+                    normalized_json_no_sort = json.dumps(parsed_json, separators=(',', ':'))
+                    normalized_json_no_sort_bytes = normalized_json_no_sort.encode('utf-8')
                 except:
                     normalized_json_bytes = body_bytes
                     normalized_json = body_str
+                    normalized_json_unicode_bytes = body_bytes
+                    normalized_json_unicode = body_str
+                    normalized_json_no_sort_bytes = body_bytes
+                    normalized_json_no_sort = body_str
                 
                 # SHA512 Methods
                 # Method 1: HMAC-SHA512 with original body (standard webhook approach)
@@ -1041,6 +1060,31 @@ class EmbedlyWebhookView(APIView):
                 # Method 6: Simple SHA512 of api_key + payload (normalized JSON)
                 computed_concat4 = hashlib.sha512(
                     secret_bytes + normalized_json_bytes
+                ).hexdigest().lower()
+                
+                # Additional variations with different JSON formats
+                # Method 6b: HMAC-SHA512 with unicode-preserved JSON
+                computed_hmac_unicode = hmac.new(
+                    secret_bytes, 
+                    normalized_json_unicode_bytes,
+                    hashlib.sha512
+                ).hexdigest().lower()
+                
+                # Method 6c: HMAC-SHA512 with no-sort JSON
+                computed_hmac_no_sort = hmac.new(
+                    secret_bytes, 
+                    normalized_json_no_sort_bytes,
+                    hashlib.sha512
+                ).hexdigest().lower()
+                
+                # Method 6d: SHA512(payload+key) with unicode JSON
+                computed_concat_unicode = hashlib.sha512(
+                    normalized_json_unicode_bytes + secret_bytes
+                ).hexdigest().lower()
+                
+                # Method 6e: SHA512(key+payload) with unicode JSON
+                computed_concat_key_unicode = hashlib.sha512(
+                    secret_bytes + normalized_json_unicode_bytes
                 ).hexdigest().lower()
                 
                 # SHA256 Methods (per alternative documentation)
@@ -1117,10 +1161,14 @@ class EmbedlyWebhookView(APIView):
                 methods = [
                     (computed_hmac1, "Method 1 (HMAC-SHA512, original body)"),
                     (computed_hmac2, "Method 2 (HMAC-SHA512, normalized JSON)"),
+                    (computed_hmac_unicode, "Method 2b (HMAC-SHA512, unicode JSON)"),
+                    (computed_hmac_no_sort, "Method 2c (HMAC-SHA512, no-sort JSON)"),
                     (computed_concat1, "Method 3 (SHA512(payload+key), original)"),
                     (computed_concat2, "Method 4 (SHA512(payload+key), normalized)"),
+                    (computed_concat_unicode, "Method 4b (SHA512(payload+key), unicode)"),
                     (computed_concat3, "Method 5 (SHA512(key+payload), original)"),
                     (computed_concat4, "Method 6 (SHA512(key+payload), normalized)"),
+                    (computed_concat_key_unicode, "Method 6b (SHA512(key+payload), unicode)"),
                     (computed_hmac256_1, "Method 7 (HMAC-SHA256, original body)"),
                     (computed_hmac256_2, "Method 8 (HMAC-SHA256, normalized JSON)"),
                     (computed_concat256_1, "Method 9 (SHA256(payload+key), original)"),
