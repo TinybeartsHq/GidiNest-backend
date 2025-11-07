@@ -894,7 +894,11 @@ class EmbedlyWebhookView(APIView):
         import logging
         logger = logging.getLogger(__name__)
         
-        # Log immediately when webhook is received
+        # Log immediately when webhook is received (use both logger and print for visibility)
+        print("\n" + "="*70)
+        print("EMBEDLY WEBHOOK RECEIVED - Processing started")
+        print(f"Request method: {request.method}")
+        print(f"Request path: {request.path}")
         logger.info("="*70)
         logger.info("EMBEDLY WEBHOOK RECEIVED - Processing started")
         logger.info(f"Request method: {request.method}")
@@ -904,6 +908,8 @@ class EmbedlyWebhookView(APIView):
         # Get raw body bytes for signature verification (must use bytes, not decoded string)
         raw_body_bytes = request.body
         raw_body = raw_body_bytes.decode('utf-8')
+        print(f"Body length: {len(raw_body_bytes)} bytes (raw), {len(raw_body)} chars (decoded)")
+        print(f"Body preview: {raw_body[:200]}...")
         logger.info(f"Body length: {len(raw_body_bytes)} bytes (raw), {len(raw_body)} chars (decoded)")
         logger.info(f"Body preview: {raw_body[:200]}...")
 
@@ -996,16 +1002,27 @@ class EmbedlyWebhookView(APIView):
                     hashlib.sha512
                 ).hexdigest().lower()
                 
-                # Log the comparison for debugging
+                # Log the comparison for debugging (use print for immediate visibility)
+                print(f"\nComparing signatures:")
+                print(f"  Received:  {normalized[:60]}...")
+                print(f"  Computed:  {computed_signature[:60]}...")
+                print(f"  Match: {computed_signature == normalized}")
                 logger.info(f"Comparing signatures:")
                 logger.info(f"  Received:  {normalized[:60]}...")
                 logger.info(f"  Computed:  {computed_signature[:60]}...")
                 logger.info(f"  Match: {computed_signature == normalized}")
                 
                 if hmac.compare_digest(computed_signature, normalized):
+                    print("✓ Signature verified successfully using SHA512 with API key")
                     logger.info(f"✓ Signature verified successfully using SHA512 with API key")
                     return True
                 else:
+                    print(f"\n✗ Signature mismatch - Full comparison:")
+                    print(f"  Received (full):  {normalized}")
+                    print(f"  Computed (full): {computed_signature}")
+                    print(f"  Body length: {len(raw_body)} chars")
+                    print(f"  Body (first 200): {raw_body[:200]}")
+                    print(f"  Body (last 50): ...{raw_body[-50:]}")
                     logger.warning(f"✗ Signature mismatch - Full comparison:")
                     logger.warning(f"  Received (full):  {normalized}")
                     logger.warning(f"  Computed (full): {computed_signature}")
@@ -1029,12 +1046,13 @@ class EmbedlyWebhookView(APIView):
             verified = False
             for i, secret in enumerate(secret_candidates):
                 logger.info(f"Trying secret {i+1} (length: {len(secret) if secret else 0})")
+                logger.info(f"Secret preview: {secret[:15]}...{secret[-5:] if len(secret) > 20 else ''}")
                 if _matches(provided_signature, secret):
                     verified = True
                     logger.info(f"✓ Signature verified with secret {i+1}")
                     break
                 else:
-                    logger.debug(f"✗ Secret {i+1} did not match")
+                    logger.warning(f"✗ Secret {i+1} did not match - check logs above for details")
             
             # Note: Embedly uses API key directly, no combinations needed
         
