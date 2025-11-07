@@ -894,28 +894,12 @@ class EmbedlyWebhookView(APIView):
         import logging
         logger = logging.getLogger(__name__)
         
-        # Log immediately when webhook is received (use both logger and print for visibility)
-        print("\n" + "="*70)
-        print("EMBEDLY WEBHOOK RECEIVED - Processing started")
-        print(f"Request method: {request.method}")
-        print(f"Request path: {request.path}")
-        logger.info("="*70)
-        logger.info("EMBEDLY WEBHOOK RECEIVED - Processing started")
-        logger.info(f"Request method: {request.method}")
-        logger.info(f"Request path: {request.path}")
-        logger.info(f"Headers: {dict(request.headers)}")
+        # Log webhook reception
+        logger.info("Embedly webhook received")
         
         # Get raw body bytes for signature verification (must use bytes, not decoded string)
         raw_body_bytes = request.body
         raw_body = raw_body_bytes.decode('utf-8')
-        
-        # Log exact body for debugging
-        print(f"Body length: {len(raw_body_bytes)} bytes (raw), {len(raw_body)} chars (decoded)")
-        print(f"Body (full): {raw_body}")
-        print(f"Body (hex first 100): {raw_body_bytes[:100].hex()}")
-        logger.info(f"Body length: {len(raw_body_bytes)} bytes (raw), {len(raw_body)} chars (decoded)")
-        logger.info(f"Body (full): {raw_body}")
-        logger.info(f"Body (hex first 100): {raw_body_bytes[:100].hex()}")
 
         if not raw_body_bytes:
             logger.error("Webhook rejected: Missing body")
@@ -940,21 +924,9 @@ class EmbedlyWebhookView(APIView):
         
         # Log signature status
         if skip_signature_verification:
-            print("\n" + "="*70)
-            print("⚠️  WARNING: Signature verification is DISABLED")
-            print("   Webhooks will be processed without signature verification")
-            print("   This is TEMPORARY - contact Embedly support for correct signature algorithm")
-            print("="*70 + "\n")
-            logger.warning("="*70)
-            logger.warning("⚠️  WARNING: Signature verification is DISABLED")
-            logger.warning("   Webhooks will be processed without signature verification")
-            logger.warning("   This is TEMPORARY - contact Embedly support for correct signature algorithm")
-            logger.warning("="*70)
+            logger.warning("Signature verification disabled - webhooks processing without verification")
         else:
-            logger.info(f"Signature verification: ENABLED")
-        logger.info(f"Signature header found: {bool(provided_signature)}")
-        if provided_signature:
-            logger.info(f"Signature preview: {provided_signature[:40]}...")
+            logger.info("Signature verification enabled")
         
         if not provided_signature:
             if skip_signature_verification:
@@ -1136,40 +1108,7 @@ class EmbedlyWebhookView(APIView):
                     secret_bytes + normalized_json_bytes
                 ).hexdigest().lower()
                 
-                # Log all attempts
-                print(f"\nTrying signature verification methods (SHA512 & SHA256):")
-                print(f"  Received:  {normalized[:60]}...")
-                print(f"  SHA512 Methods:")
-                print(f"    Method 1 (HMAC-SHA512, original):     {computed_hmac1[:60]}...")
-                print(f"    Method 2 (HMAC-SHA512, normalized):   {computed_hmac2[:60]}...")
-                print(f"    Method 3 (SHA512(payload+key), orig): {computed_concat1[:60]}...")
-                print(f"    Method 4 (SHA512(payload+key), norm): {computed_concat2[:60]}...")
-                print(f"    Method 5 (SHA512(key+payload), orig): {computed_concat3[:60]}...")
-                print(f"    Method 6 (SHA512(key+payload), norm): {computed_concat4[:60]}...")
-                print(f"  SHA256 Methods:")
-                print(f"    Method 7 (HMAC-SHA256, original):     {computed_hmac256_1[:60]}...")
-                print(f"    Method 8 (HMAC-SHA256, normalized):   {computed_hmac256_2[:60]}...")
-                print(f"    Method 9 (SHA256(payload+key), orig): {computed_concat256_1[:60]}...")
-                print(f"    Method 10 (SHA256(payload+key), norm): {computed_concat256_2[:60]}...")
-                print(f"    Method 11 (SHA256(key+payload), orig): {computed_concat256_3[:60]}...")
-                print(f"    Method 12 (SHA256(key+payload), norm): {computed_concat256_4[:60]}...")
-                
-                logger.info(f"Trying signature verification methods (SHA512 & SHA256):")
-                logger.info(f"  Received:  {normalized[:60]}...")
-                logger.info(f"  SHA512 Methods:")
-                logger.info(f"    Method 1 (HMAC-SHA512, original):     {computed_hmac1[:60]}...")
-                logger.info(f"    Method 2 (HMAC-SHA512, normalized):   {computed_hmac2[:60]}...")
-                logger.info(f"    Method 3 (SHA512(payload+key), orig): {computed_concat1[:60]}...")
-                logger.info(f"    Method 4 (SHA512(payload+key), norm): {computed_concat2[:60]}...")
-                logger.info(f"    Method 5 (SHA512(key+payload), orig): {computed_concat3[:60]}...")
-                logger.info(f"    Method 6 (SHA512(key+payload), norm): {computed_concat4[:60]}...")
-                logger.info(f"  SHA256 Methods:")
-                logger.info(f"    Method 7 (HMAC-SHA256, original):     {computed_hmac256_1[:60]}...")
-                logger.info(f"    Method 8 (HMAC-SHA256, normalized):   {computed_hmac256_2[:60]}...")
-                logger.info(f"    Method 9 (SHA256(payload+key), orig): {computed_concat256_1[:60]}...")
-                logger.info(f"    Method 10 (SHA256(payload+key), norm): {computed_concat256_2[:60]}...")
-                logger.info(f"    Method 11 (SHA256(key+payload), orig): {computed_concat256_3[:60]}...")
-                logger.info(f"    Method 12 (SHA256(key+payload), norm): {computed_concat256_4[:60]}...")
+                # Try signature verification (silent - only log on failure)
                 
                 # Check each method
                 methods = [
@@ -1193,23 +1132,11 @@ class EmbedlyWebhookView(APIView):
                 
                 for computed_sig, method_name in methods:
                     if hmac.compare_digest(computed_sig, normalized):
-                        print(f"✓ Signature verified using {method_name}")
-                        logger.info(f"✓ Signature verified using {method_name}")
+                        logger.info(f"Signature verified using {method_name}")
                         return True
                 
-                # None matched
-                print(f"\n✗ All methods failed - Full comparison:")
-                print(f"  Received (full):  {normalized}")
-                for i, (computed_sig, method_name) in enumerate(methods, 1):
-                    print(f"  {method_name}: {computed_sig}")
-                print(f"  Body length: {len(raw_body)} chars")
-                print(f"  Body (full): {raw_body}")
-                logger.warning(f"✗ All signature methods failed - Full comparison:")
-                logger.warning(f"  Received (full):  {normalized}")
-                for computed_sig, method_name in methods:
-                    logger.warning(f"  {method_name}: {computed_sig}")
-                logger.warning(f"  Body length: {len(raw_body)} chars")
-                logger.warning(f"  Body (full): {raw_body}")
+                # None matched - log minimal info
+                logger.warning(f"Signature verification failed - received: {normalized[:40]}...")
                 return False
             except Exception as e:
                 logger.error(f"Error verifying signature: {e}", exc_info=True)
@@ -1275,22 +1202,7 @@ class EmbedlyWebhookView(APIView):
                 f"Headers: {header_info}"
             )
             
-            # Also print to console for immediate visibility
-            print(f"\n{'='*70}")
-            print("WEBHOOK SIGNATURE VERIFICATION FAILED")
-            print(f"{'='*70}")
-            print(f"Signature received: {provided_signature[:60] if provided_signature else 'NONE'}...")
-            print(f"Signature length: {len(provided_signature) if provided_signature else 0} chars")
-            print(f"Secrets available: {len(secret_candidates)}")
-            print(f"Headers found:")
-            for key, value in header_info.items():
-                print(f"  {key}: {value[:60] if value != 'NOT FOUND' else value}")
-            print(f"Body length: {len(raw_body)} bytes")
-            if debug_info:
-                print(f"\nComputed signatures (for debugging):")
-                for info in debug_info:
-                    print(f"  {info}")
-            print(f"{'='*70}\n")
+            # Log error (minimal - no verbose debug in production)
             
             return JsonResponse({'error': 'Invalid signature - authentication failed'}, status=403)
 
@@ -1353,7 +1265,7 @@ class EmbedlyWebhookView(APIView):
                 # Update the wallet balance (ensure Decimal)
                 try:
                     wallet.deposit(Decimal(str(amount)))
-                    logger.info(f"Successfully credited {amount} to wallet {wallet.account_number} for user {wallet.user.email}")
+                    logger.info(f"Credited {amount} to wallet {wallet.account_number} (user: {wallet.user.email})")
                 except Exception as deposit_error:
                     logger.error(f"Failed to deposit {amount} to wallet {wallet.account_number}: {str(deposit_error)}")
                     raise  # Re-raise to rollback the transaction
