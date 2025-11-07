@@ -897,11 +897,13 @@ class EmbedlyWebhookView(APIView):
         logger.info(f"Request path: {request.path}")
         logger.info(f"Headers: {dict(request.headers)}")
         
-        raw_body = request.body.decode('utf-8')
-        logger.info(f"Body length: {len(raw_body)} bytes")
+        # Get raw body bytes for signature verification (must use bytes, not decoded string)
+        raw_body_bytes = request.body
+        raw_body = raw_body_bytes.decode('utf-8')
+        logger.info(f"Body length: {len(raw_body_bytes)} bytes (raw), {len(raw_body)} chars (decoded)")
         logger.info(f"Body preview: {raw_body[:200]}...")
 
-        if not raw_body:
+        if not raw_body_bytes:
             logger.error("Webhook rejected: Missing body")
             return JsonResponse({'error': 'Missing body'}, status=400)
         
@@ -965,25 +967,18 @@ class EmbedlyWebhookView(APIView):
         # Log which secrets we're trying (for debugging)
         logger.info(f"Attempting webhook signature verification with {len(secret_candidates)} secret(s)")
 
-        def _matches(sig: str, secret: str, body_data=None) -> bool:
+        def _matches(sig: str, secret: str) -> bool:
             # Embedly uses sha512(notification payload, api_key) per their documentation
             # Signature format: Just the hexdigest (no prefix like "sha512=" or "sha512:")
             normalized = sig.split('=')[-1].split(':')[-1].strip().lower()
             
-            # Use raw body as string (per Embedly docs: sha512(notification payload, api_key))
-            # The payload is the raw JSON string body
-            if body_data is None:
-                body_to_sign = raw_body  # Use raw body as string
-            else:
-                body_to_sign = body_data if isinstance(body_data, str) else body_data.decode('utf-8')
-            
             try:
                 # Embedly uses SHA512 with API key as secret
-                # Format: hmac-sha512(raw_body_string, api_key)
-                body_bytes = body_to_sign.encode('utf-8')
+                # Format: hmac-sha512(raw_body_bytes, api_key)
+                # Use raw body bytes directly (as received from Embedly)
                 computed_signature = hmac.new(
                     secret.encode('utf-8'), 
-                    body_bytes, 
+                    raw_body_bytes,  # Use raw bytes, not decoded string
                     hashlib.sha512
                 ).hexdigest().lower()
                 
@@ -991,7 +986,7 @@ class EmbedlyWebhookView(APIView):
                     logger.info(f"✓ Signature verified successfully using SHA512 with API key")
                     return True
                 else:
-                    logger.debug(f"Signature mismatch - Expected: {normalized[:20]}..., Got: {computed_signature[:20]}...")
+                    logger.debug(f"Signature mismatch - Received: {normalized[:40]}..., Computed: {computed_signature[:40]}...")
                     return False
             except Exception as e:
                 logger.error(f"Error verifying signature: {e}", exc_info=True)
@@ -1006,7 +1001,15 @@ class EmbedlyWebhookView(APIView):
             logger.warning("Skipping webhook signature verification (EMBEDLY_SKIP_WEBHOOK_SIGNATURE=True) - signature present but not verified")
         else:
             # Try each secret individually
-            verified = any(_matches(provided_signature, secret) for secret in secret_candidates)
+            verified = False
+            for i, secret in enumerate(secret_candidates):
+                logger.info(f"Trying secret {i+1} (length: {len(secret) if secret else 0})")
+                if _matches(provided_signature, secret):
+                    verified = True
+                    logger.info(f"✓ Signature verified with secret {i+1}")
+                    break
+                else:
+                    logger.debug(f"✗ Secret {i+1} did not match")
             
             # Note: Embedly uses API key directly, no combinations needed
         
