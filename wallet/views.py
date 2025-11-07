@@ -908,10 +908,14 @@ class EmbedlyWebhookView(APIView):
         # Get raw body bytes for signature verification (must use bytes, not decoded string)
         raw_body_bytes = request.body
         raw_body = raw_body_bytes.decode('utf-8')
+        
+        # Log exact body for debugging
         print(f"Body length: {len(raw_body_bytes)} bytes (raw), {len(raw_body)} chars (decoded)")
-        print(f"Body preview: {raw_body[:200]}...")
+        print(f"Body (full): {raw_body}")
+        print(f"Body (hex first 100): {raw_body_bytes[:100].hex()}")
         logger.info(f"Body length: {len(raw_body_bytes)} bytes (raw), {len(raw_body)} chars (decoded)")
-        logger.info(f"Body preview: {raw_body[:200]}...")
+        logger.info(f"Body (full): {raw_body}")
+        logger.info(f"Body (hex first 100): {raw_body_bytes[:100].hex()}")
 
         if not raw_body_bytes:
             logger.error("Webhook rejected: Missing body")
@@ -949,9 +953,10 @@ class EmbedlyWebhookView(APIView):
         
         # Embedly uses API key for webhook signature verification (per their documentation)
         # Format: sha512(notification payload, api_key)
-        # So we use the API key as the secret
+        # Try both API key and Organization ID as secrets (some providers use org ID)
         raw_secrets = [
             getattr(settings, 'EMBEDLY_API_KEY_PRODUCTION', None),  # Primary - API key is used for signing
+            getattr(settings, 'EMBEDLY_ORGANIZATION_ID_PRODUCTION', None),  # Try org ID as well
             getattr(settings, 'EMBEDLY_WEBHOOK_SECRET', None),  # Fallback if separate secret exists
             getattr(settings, 'EMBEDLY_WEBHOOK_KEY', None),  # Alternative name
         ]
@@ -981,55 +986,169 @@ class EmbedlyWebhookView(APIView):
 
         def _matches(sig: str, secret: str) -> bool:
             # Embedly uses sha512(notification payload, api_key) per their documentation
-            # Per their example: hmac.update(rawBody, "utf8") where rawBody is a string
-            # Signature format: Just the hexdigest (no prefix like "sha512=" or "sha512:")
+            # The notation is ambiguous - could be HMAC or simple concatenation
+            # Try multiple methods to find the correct one
             normalized = sig.split('=')[-1].split(':')[-1].strip().lower()
             
             try:
-                # Embedly's JavaScript example:
-                # const hmac = crypto.createHmac("sha512", api_key);
-                # hmac.update(rawBody, "utf8");  // rawBody is a string
-                # const computedSignature = hmac.digest("hex");
+                import json
+                secret_bytes = secret.encode('utf-8')
                 
-                # In Python, we need to:
-                # 1. Use the raw body string (decoded from bytes)
-                # 2. Encode it to UTF-8 bytes for HMAC
-                # 3. Use SHA512
-                body_bytes = raw_body.encode('utf-8')
-                computed_signature = hmac.new(
-                    secret.encode('utf-8'), 
+                # Try with original body (as received)
+                body_bytes = raw_body_bytes  # Use raw bytes directly
+                body_str = raw_body  # Decoded string
+                
+                # Also try with normalized JSON (sorted keys, compact format)
+                # Some webhook providers normalize JSON before signing
+                try:
+                    parsed_json = json.loads(body_str)
+                    normalized_json = json.dumps(parsed_json, separators=(',', ':'), sort_keys=True)
+                    normalized_json_bytes = normalized_json.encode('utf-8')
+                except:
+                    normalized_json_bytes = body_bytes
+                    normalized_json = body_str
+                
+                # SHA512 Methods
+                # Method 1: HMAC-SHA512 with original body (standard webhook approach)
+                computed_hmac1 = hmac.new(
+                    secret_bytes, 
                     body_bytes,
                     hashlib.sha512
                 ).hexdigest().lower()
                 
-                # Log the comparison for debugging (use print for immediate visibility)
-                print(f"\nComparing signatures:")
-                print(f"  Received:  {normalized[:60]}...")
-                print(f"  Computed:  {computed_signature[:60]}...")
-                print(f"  Match: {computed_signature == normalized}")
-                logger.info(f"Comparing signatures:")
-                logger.info(f"  Received:  {normalized[:60]}...")
-                logger.info(f"  Computed:  {computed_signature[:60]}...")
-                logger.info(f"  Match: {computed_signature == normalized}")
+                # Method 2: HMAC-SHA512 with normalized JSON
+                computed_hmac2 = hmac.new(
+                    secret_bytes, 
+                    normalized_json_bytes,
+                    hashlib.sha512
+                ).hexdigest().lower()
                 
-                if hmac.compare_digest(computed_signature, normalized):
-                    print("✓ Signature verified successfully using SHA512 with API key")
-                    logger.info(f"✓ Signature verified successfully using SHA512 with API key")
-                    return True
-                else:
-                    print(f"\n✗ Signature mismatch - Full comparison:")
-                    print(f"  Received (full):  {normalized}")
-                    print(f"  Computed (full): {computed_signature}")
-                    print(f"  Body length: {len(raw_body)} chars")
-                    print(f"  Body (first 200): {raw_body[:200]}")
-                    print(f"  Body (last 50): ...{raw_body[-50:]}")
-                    logger.warning(f"✗ Signature mismatch - Full comparison:")
-                    logger.warning(f"  Received (full):  {normalized}")
-                    logger.warning(f"  Computed (full): {computed_signature}")
-                    logger.warning(f"  Body length: {len(raw_body)} chars")
-                    logger.warning(f"  Body (first 200): {raw_body[:200]}")
-                    logger.warning(f"  Body (last 50): ...{raw_body[-50:]}")
-                    return False
+                # Method 3: Simple SHA512 of payload + api_key (original)
+                computed_concat1 = hashlib.sha512(
+                    body_bytes + secret_bytes
+                ).hexdigest().lower()
+                
+                # Method 4: Simple SHA512 of payload + api_key (normalized JSON)
+                computed_concat2 = hashlib.sha512(
+                    normalized_json_bytes + secret_bytes
+                ).hexdigest().lower()
+                
+                # Method 5: Simple SHA512 of api_key + payload (original)
+                computed_concat3 = hashlib.sha512(
+                    secret_bytes + body_bytes
+                ).hexdigest().lower()
+                
+                # Method 6: Simple SHA512 of api_key + payload (normalized JSON)
+                computed_concat4 = hashlib.sha512(
+                    secret_bytes + normalized_json_bytes
+                ).hexdigest().lower()
+                
+                # SHA256 Methods (per alternative documentation)
+                # Method 7: HMAC-SHA256 with original body
+                computed_hmac256_1 = hmac.new(
+                    secret_bytes, 
+                    body_bytes,
+                    hashlib.sha256
+                ).hexdigest().lower()
+                
+                # Method 8: HMAC-SHA256 with normalized JSON
+                computed_hmac256_2 = hmac.new(
+                    secret_bytes, 
+                    normalized_json_bytes,
+                    hashlib.sha256
+                ).hexdigest().lower()
+                
+                # Method 9: Simple SHA256 of payload + api_key (original)
+                computed_concat256_1 = hashlib.sha256(
+                    body_bytes + secret_bytes
+                ).hexdigest().lower()
+                
+                # Method 10: Simple SHA256 of payload + api_key (normalized JSON)
+                computed_concat256_2 = hashlib.sha256(
+                    normalized_json_bytes + secret_bytes
+                ).hexdigest().lower()
+                
+                # Method 11: Simple SHA256 of api_key + payload (original)
+                computed_concat256_3 = hashlib.sha256(
+                    secret_bytes + body_bytes
+                ).hexdigest().lower()
+                
+                # Method 12: Simple SHA256 of api_key + payload (normalized JSON)
+                computed_concat256_4 = hashlib.sha256(
+                    secret_bytes + normalized_json_bytes
+                ).hexdigest().lower()
+                
+                # Log all attempts
+                print(f"\nTrying signature verification methods (SHA512 & SHA256):")
+                print(f"  Received:  {normalized[:60]}...")
+                print(f"  SHA512 Methods:")
+                print(f"    Method 1 (HMAC-SHA512, original):     {computed_hmac1[:60]}...")
+                print(f"    Method 2 (HMAC-SHA512, normalized):   {computed_hmac2[:60]}...")
+                print(f"    Method 3 (SHA512(payload+key), orig): {computed_concat1[:60]}...")
+                print(f"    Method 4 (SHA512(payload+key), norm): {computed_concat2[:60]}...")
+                print(f"    Method 5 (SHA512(key+payload), orig): {computed_concat3[:60]}...")
+                print(f"    Method 6 (SHA512(key+payload), norm): {computed_concat4[:60]}...")
+                print(f"  SHA256 Methods:")
+                print(f"    Method 7 (HMAC-SHA256, original):     {computed_hmac256_1[:60]}...")
+                print(f"    Method 8 (HMAC-SHA256, normalized):   {computed_hmac256_2[:60]}...")
+                print(f"    Method 9 (SHA256(payload+key), orig): {computed_concat256_1[:60]}...")
+                print(f"    Method 10 (SHA256(payload+key), norm): {computed_concat256_2[:60]}...")
+                print(f"    Method 11 (SHA256(key+payload), orig): {computed_concat256_3[:60]}...")
+                print(f"    Method 12 (SHA256(key+payload), norm): {computed_concat256_4[:60]}...")
+                
+                logger.info(f"Trying signature verification methods (SHA512 & SHA256):")
+                logger.info(f"  Received:  {normalized[:60]}...")
+                logger.info(f"  SHA512 Methods:")
+                logger.info(f"    Method 1 (HMAC-SHA512, original):     {computed_hmac1[:60]}...")
+                logger.info(f"    Method 2 (HMAC-SHA512, normalized):   {computed_hmac2[:60]}...")
+                logger.info(f"    Method 3 (SHA512(payload+key), orig): {computed_concat1[:60]}...")
+                logger.info(f"    Method 4 (SHA512(payload+key), norm): {computed_concat2[:60]}...")
+                logger.info(f"    Method 5 (SHA512(key+payload), orig): {computed_concat3[:60]}...")
+                logger.info(f"    Method 6 (SHA512(key+payload), norm): {computed_concat4[:60]}...")
+                logger.info(f"  SHA256 Methods:")
+                logger.info(f"    Method 7 (HMAC-SHA256, original):     {computed_hmac256_1[:60]}...")
+                logger.info(f"    Method 8 (HMAC-SHA256, normalized):   {computed_hmac256_2[:60]}...")
+                logger.info(f"    Method 9 (SHA256(payload+key), orig): {computed_concat256_1[:60]}...")
+                logger.info(f"    Method 10 (SHA256(payload+key), norm): {computed_concat256_2[:60]}...")
+                logger.info(f"    Method 11 (SHA256(key+payload), orig): {computed_concat256_3[:60]}...")
+                logger.info(f"    Method 12 (SHA256(key+payload), norm): {computed_concat256_4[:60]}...")
+                
+                # Check each method
+                methods = [
+                    (computed_hmac1, "Method 1 (HMAC-SHA512, original body)"),
+                    (computed_hmac2, "Method 2 (HMAC-SHA512, normalized JSON)"),
+                    (computed_concat1, "Method 3 (SHA512(payload+key), original)"),
+                    (computed_concat2, "Method 4 (SHA512(payload+key), normalized)"),
+                    (computed_concat3, "Method 5 (SHA512(key+payload), original)"),
+                    (computed_concat4, "Method 6 (SHA512(key+payload), normalized)"),
+                    (computed_hmac256_1, "Method 7 (HMAC-SHA256, original body)"),
+                    (computed_hmac256_2, "Method 8 (HMAC-SHA256, normalized JSON)"),
+                    (computed_concat256_1, "Method 9 (SHA256(payload+key), original)"),
+                    (computed_concat256_2, "Method 10 (SHA256(payload+key), normalized)"),
+                    (computed_concat256_3, "Method 11 (SHA256(key+payload), original)"),
+                    (computed_concat256_4, "Method 12 (SHA256(key+payload), normalized)"),
+                ]
+                
+                for computed_sig, method_name in methods:
+                    if hmac.compare_digest(computed_sig, normalized):
+                        print(f"✓ Signature verified using {method_name}")
+                        logger.info(f"✓ Signature verified using {method_name}")
+                        return True
+                
+                # None matched
+                print(f"\n✗ All methods failed - Full comparison:")
+                print(f"  Received (full):  {normalized}")
+                for i, (computed_sig, method_name) in enumerate(methods, 1):
+                    print(f"  {method_name}: {computed_sig}")
+                print(f"  Body length: {len(raw_body)} chars")
+                print(f"  Body (full): {raw_body}")
+                logger.warning(f"✗ All signature methods failed - Full comparison:")
+                logger.warning(f"  Received (full):  {normalized}")
+                for computed_sig, method_name in methods:
+                    logger.warning(f"  {method_name}: {computed_sig}")
+                logger.warning(f"  Body length: {len(raw_body)} chars")
+                logger.warning(f"  Body (full): {raw_body}")
+                return False
             except Exception as e:
                 logger.error(f"Error verifying signature: {e}", exc_info=True)
                 return False
