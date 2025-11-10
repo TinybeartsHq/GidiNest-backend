@@ -1,4 +1,4 @@
-from rest_framework import status
+from rest_framework import status, permissions
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.authtoken.models import Token
@@ -10,19 +10,14 @@ from notification.helper.email import MailClient
 from onboarding.serializers import ActivateEmailSerializer, RegisterCompleteSerializer, RegisterInitiateSerializer, RegisterOTPSerializer, UserSerializer, LoginSerializer
 from account.models.users import UserModel
 from rest_framework_simplejwt.tokens import RefreshToken
-from rest_framework import permissions
 import random
 from django.utils import timezone
 from django.core.mail import send_mail
-from rest_framework import status
-from rest_framework.views import APIView
-from rest_framework.response import Response
 from django.contrib.auth.hashers import make_password
 from onboarding.models import PasswordResetOTP, RegisterTempData, User
 from onboarding.serializers import RequestOTPSerializer, VerifyOTPSerializer, ResetPasswordSerializer
 from django.contrib.auth import authenticate
 from django.conf import settings
-from providers.helpers.cuoral import CuoralAPI
 from django.db.models import Q
 
 
@@ -68,7 +63,7 @@ class RegisterInitiateView(APIView):
         
 
             else:
-                # Direct Email Flow: Send OTP
+                # Direct Email Flow: Send OTP via Email
                 otp = str(random.randint(100000, 999999))
                 print(otp)
              
@@ -82,17 +77,27 @@ class RegisterInitiateView(APIView):
                 ) 
                 session_id = str(temp_data.id)
 
-
-                cuoral_client = CuoralAPI()
-                res = cuoral_client.send_sms(phone,f"Your verification OTP is {otp}")
+                # Send OTP via email using MailClient
+                client = MailClient()
+                email_result = client.send_email(
+                    to_email=email,
+                    subject="Verify Your Email - Gidinest",
+                    template_name="emails/otp.html",
+                    context={
+                        "otp": otp,
+                        "user_name": first_name or "User",
+                        "year": timezone.now().year,
+                    },
+                    to_name=first_name or "User"
+                )
                 
-                # Check if SMS was sent successfully
-                if res.get("status") != "success":
+                # Check if email was sent successfully
+                if email_result.get("status") != "success":
                     # Delete the temp_data since OTP sending failed
                     temp_data.delete()
-                    return error_response("Failed to send OTP. Please try again later.")
+                    return error_response("Failed to send OTP email. Please try again later.")
   
-                return success_response(data={"session_id": session_id},  message= "OTP sent to phone number")
+                return success_response(data={"session_id": session_id},  message= "OTP sent to your email address")
         return validation_error_response(serializer.errors)
 
 

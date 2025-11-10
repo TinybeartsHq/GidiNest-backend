@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Welcome to Personal Guard</title>
+  <title>Verification Code - Gidinest</title>
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -21,18 +21,31 @@
       box-shadow: 0 2px 8px rgba(0,0,0,0.05);
     }
     h2 {
-      color: #0056b3;
+      color: #b3508b; /* Soft magenta/purple */
     }
-    .otp {
-      font-size: 28px;
+    .otp-code {
+      display: block;
+      background-color: #f3e8f0;
+      color: #b3508b;
+      font-size: 32px;
       font-weight: bold;
-      color: #2b2b2b;
-      letter-spacing: 2px;
-      margin: 20px 0;
+      letter-spacing: 8px;
+      text-align: center;
+      padding: 20px;
+      margin: 24px 0;
+      border-radius: 8px;
+      border: 2px dashed #b3508b;
     }
     p {
       font-size: 16px;
       line-height: 1.6;
+    }
+    .warning {
+      background-color: #fff3cd;
+      border-left: 4px solid #ffc107;
+      padding: 12px;
+      margin: 20px 0;
+      border-radius: 4px;
     }
     .footer {
       font-size: 12px;
@@ -40,11 +53,43 @@
       margin-top: 30px;
       text-align: center;
     }
+    .logo {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+    .logo img {
+      max-width: 120px;
+    }
   </style>
 </head>
 <body>
   <div class="email-container">
- 
+    <div class="logo">
+      <img src="https://app.gidinest.com/assets/icons/Logo%202.png" alt="Gidinest Logo" />
+    </div>
+    <h2>Email Verification</h2>
+    <p>
+      Hi {{ user_name }},
+    </p>
+    <p>
+      Welcome to <strong>Gidinest</strong>! To complete your registration, please use the One-Time Password (OTP) below to verify your email address:
+    </p>
+    <div class="otp-code">
+      {{ otp }}
+    </div>
+    <p>
+      This OTP is valid for <strong>10 minutes</strong>. Enter it on the registration page to continue.
+    </p>
+    <div class="warning">
+      <strong>⚠️ Security Notice:</strong> For your security, never share this OTP with anyone, including Gidinest staff. We will never ask for your OTP.
+    </div>
+    <p>
+      If you didn't request this verification code, please ignore this email.
+    </p>
+    <div class="footer">
+      &copy; {{ year }} Gidinest. All rights reserved.<br>
+      Your safe and supportive space for financial growth.
+    </div>
   </div>
 </body>
 </html>
