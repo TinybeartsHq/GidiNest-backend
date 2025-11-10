@@ -86,10 +86,16 @@ class CuoralAPI:
             }
 
         except requests.exceptions.HTTPError as http_err:
+            error_details = ""
+            try:
+                if 'response' in locals() and response is not None:
+                    error_details = response.text
+            except:
+                pass
             return {
                 "status": "error",
                 "message": f"An error occurred please try again later",
-                "details": response.text
+                "details": error_details
             }
         except requests.exceptions.ConnectionError:
             return {

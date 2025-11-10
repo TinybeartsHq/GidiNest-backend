@@ -85,6 +85,12 @@ class RegisterInitiateView(APIView):
 
                 cuoral_client = CuoralAPI()
                 res = cuoral_client.send_sms(phone,f"Your verification OTP is {otp}")
+                
+                # Check if SMS was sent successfully
+                if res.get("status") != "success":
+                    # Delete the temp_data since OTP sending failed
+                    temp_data.delete()
+                    return error_response("Failed to send OTP. Please try again later.")
   
                 return success_response(data={"session_id": session_id},  message= "OTP sent to phone number")
         return validation_error_response(serializer.errors)
@@ -103,7 +109,14 @@ class RegisterVerifyOTPView(APIView):
             otp = request.data.get('otp')
             session_id = request.data.get('session_id')
 
-            session = RegisterTempData.objects.get(id=session_id)
+            try:
+                session = RegisterTempData.objects.get(id=session_id)
+            except RegisterTempData.DoesNotExist:
+                return error_response("Invalid session ID. Please restart the registration process.")
+            
+            # Check if this is an OAuth session (shouldn't require OTP verification)
+            if session.is_oauth:
+                return error_response("OTP verification is not required for OAuth registration.")
       
             stored_otp = session.otp #retrieve otp
     
