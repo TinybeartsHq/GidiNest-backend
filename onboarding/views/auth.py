@@ -31,12 +31,16 @@ class RegisterInitiateView(APIView):
  
         serializer = RegisterInitiateSerializer(data=request.data)
         if serializer.is_valid():
-            email = request.data.get('email')
-            phone = request.data.get('phone')
-            first_name = request.data.get('first_name')
-            last_name = request.data.get('last_name')
-            auth_id = request.data.get('auth_id')
-            oauth_provider = request.data.get('oauth_provider') # e.g., 'google', 'apple'
+            email = serializer.validated_data.get('email')
+            phone = serializer.validated_data.get('phone')
+            first_name = serializer.validated_data.get('first_name')
+            last_name = serializer.validated_data.get('last_name')
+            auth_id = serializer.validated_data.get('auth_id')
+            oauth_provider = serializer.validated_data.get('oauth_provider') # e.g., 'google', 'apple'
+            
+            # Convert empty strings to None for optional fields
+            auth_id = auth_id if auth_id else None
+            oauth_provider = oauth_provider if oauth_provider else None
 
             # check if user with email or phone number already exist
             user_exists = UserModel.objects.filter(

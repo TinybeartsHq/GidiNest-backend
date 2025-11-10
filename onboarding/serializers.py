@@ -8,9 +8,9 @@ class RegisterInitiateSerializer(serializers.Serializer):
     email = serializers.EmailField()
     phone = serializers.CharField(required=True)
     first_name = serializers.CharField(required=True)
-    first_name = serializers.CharField(required=True)
     last_name = serializers.CharField(required=True)
-    oauth_provider = serializers.CharField(required=False,allow_blank=True)
+    oauth_provider = serializers.CharField(required=False, allow_blank=True)
+    auth_id = serializers.CharField(required=False, allow_blank=True)
 
 
 
