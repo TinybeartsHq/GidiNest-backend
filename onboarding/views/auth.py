@@ -43,12 +43,15 @@ class RegisterInitiateView(APIView):
             oauth_provider = oauth_provider if oauth_provider else None
 
             # check if user with email or phone number already exist
-            user_exists = UserModel.objects.filter(
-                Q(email=email) | Q(phone=phone)
-            ).exists()
-
-            if user_exists:
-                return Response({"error": "User with this email or phone already exists."}, status=400)
+            email_exists = UserModel.objects.filter(email=email).exists()
+            phone_exists = UserModel.objects.filter(phone=phone).exists()
+            
+            if email_exists and phone_exists:
+                return error_response("User with this email and phone number already exists.", status_code=400)
+            elif email_exists:
+                return error_response("User with this email address already exists.", status_code=400)
+            elif phone_exists:
+                return error_response("User with this phone number already exists.", status_code=400)
             
             
             if oauth_provider == "google":
