@@ -2,6 +2,7 @@ from rest_framework import status, permissions
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.authtoken.models import Token
+import logging
 
 from account.models.devices import UserDevices
 from account.serializers import UserProfileSerializer
@@ -19,6 +20,8 @@ from onboarding.serializers import RequestOTPSerializer, VerifyOTPSerializer, Re
 from django.contrib.auth import authenticate
 from django.conf import settings
 from django.db.models import Q
+
+logger = logging.getLogger(__name__)
 
 
 class RegisterInitiateView(APIView):
@@ -102,7 +105,10 @@ class RegisterInitiateView(APIView):
                 if email_result.get("status") != "success":
                     # Delete the temp_data since OTP sending failed
                     temp_data.delete()
-                    return error_response("Failed to send OTP email. Please try again later.")
+                    error_message = email_result.get("message", "Failed to send OTP email. Please try again later.")
+                    # Log the error for debugging
+                    logger.error(f"Failed to send registration OTP email to {email}: {error_message}")
+                    return error_response("Failed to send OTP email. Please try again later or contact support.")
   
                 return success_response(data={"session_id": session_id},  message= "OTP sent to your email address")
         return validation_error_response(serializer.errors)
@@ -199,31 +205,35 @@ class RegisterCompleteView(APIView):
                     serializer = UserSerializer(data=user_data)
 
                     if serializer.is_valid():
-                        user = serializer.save()
+                        try:
+                            user = serializer.save()
 
-                        user.google_id = temp_data.auth_id
-                        user.save()
+                            user.google_id = temp_data.auth_id
+                            user.save()
 
-                        tokens = RefreshToken.for_user(user)
-                        token_data = {
-                            "refresh": str(tokens),
-                            "access": str(tokens.access_token)
-                        }
-                        
-                        temp_data.delete()  # Clean up
+                            tokens = RefreshToken.for_user(user)
+                            token_data = {
+                                "refresh": str(tokens),
+                                "access": str(tokens.access_token)
+                            }
+                            
+                            temp_data.delete()  # Clean up
 
-                        client = MailClient()
-                        client.send_email(
-                                to_email=user.email,
-                                subject="Welcome to Gidinest",
-                                template_name="emails/welcome.html",
-                                context={"user": user},
-                            )
+                            client = MailClient()
+                            client.send_email(
+                                    to_email=user.email,
+                                    subject="Welcome to Gidinest",
+                                    template_name="emails/welcome.html",
+                                    context={"user": user},
+                                )
 
-                        return success_response( data={
-                            'user': UserSerializer(user).data,
-                            'token': token_data
-                        },message="Registration successful")
+                            return success_response( data={
+                                'user': UserSerializer(user).data,
+                                'token': token_data
+                            },message="Registration successful")
+                        except Exception as e:
+                            logger.error(f"Error creating OAuth user in RegisterCompleteView: {str(e)}", exc_info=True)
+                            return error_response(f"Registration failed: {str(e)}", status_code=500)
                     return validation_error_response(serializer.errors)
                 else:
                     # Direct Email Flow: Complete registration using data from session
@@ -246,38 +256,42 @@ class RegisterCompleteView(APIView):
 
                     serializer = UserSerializer(data=user_data)
                     if serializer.is_valid():
-                        user = serializer.save()
-                        tokens = RefreshToken.for_user(user)
-                        token_data = {
-                            "refresh": str(tokens),
-                            "access": str(tokens.access_token)
-                        }
-                        
-                        if device_id:
-                            #create user device record
-                            UserDevices.objects.create(
-                                user=user,
-                                device_id = device_id,
-                                device_os =  device_os,
-                                device_info =  device_info)
-                        
-                        client = MailClient()
-                        client.send_email(
-                                to_email=temp_data.email,
-                                subject="Welcome to Gidinest",
-                                template_name="emails/welcome.html",
-                                context= {
-                                    "first_name": temp_data.first_name,
-                                    "year": timezone.now().year,
-                                },
-                                to_name=temp_data.first_name
-                            )
+                        try:
+                            user = serializer.save()
+                            tokens = RefreshToken.for_user(user)
+                            token_data = {
+                                "refresh": str(tokens),
+                                "access": str(tokens.access_token)
+                            }
+                            
+                            if device_id:
+                                #create user device record
+                                UserDevices.objects.create(
+                                    user=user,
+                                    device_id = device_id,
+                                    device_os =  device_os,
+                                    device_info =  device_info)
+                            
+                            client = MailClient()
+                            client.send_email(
+                                    to_email=temp_data.email,
+                                    subject="Welcome to Gidinest",
+                                    template_name="emails/welcome.html",
+                                    context= {
+                                        "first_name": temp_data.first_name,
+                                        "year": timezone.now().year,
+                                    },
+                                    to_name=temp_data.first_name
+                                )
 
 
-                        return success_response( data={
-                            'user': UserProfileSerializer(user).data,
-                            'token': token_data
-                        },message="Registration successful")
+                            return success_response( data={
+                                'user': UserProfileSerializer(user).data,
+                                'token': token_data
+                            },message="Registration successful")
+                        except Exception as e:
+                            logger.error(f"Error creating user in RegisterCompleteView: {str(e)}", exc_info=True)
+                            return error_response(f"Registration failed: {str(e)}", status_code=500)
                     return validation_error_response(serializer.errors)
 
         return validation_error_response(serializer.errors)

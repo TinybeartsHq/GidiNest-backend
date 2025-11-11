@@ -53,6 +53,7 @@ class UserModel(BaseModel, AbstractBaseUser,PermissionsMixin):
     password = models.CharField(max_length=200)
     last_login = models.DateTimeField(blank=True, null=True)
     google_id = models.CharField(null=True, max_length=200,default="")
+    apple_id = models.CharField(null=True, max_length=200,default="", help_text="Apple User ID for Apple Sign In")
     bvn = models.CharField(null=True, max_length=12,default="")
     bvn_first_name = models.CharField(null=True, max_length=200,default="")
     bvn_last_name = models.CharField(null=True, max_length=200,default="")
@@ -87,8 +88,40 @@ class UserModel(BaseModel, AbstractBaseUser,PermissionsMixin):
     embedly_wallet_id = models.CharField(null=True, max_length=200,default="")
     has_virtual_wallet = models.BooleanField(default=False)
     email_verified = models.BooleanField(default=False)
+    email_verified_at = models.DateTimeField(null=True, blank=True, help_text="Timestamp when email was verified")
+    phone_verified_at = models.DateTimeField(null=True, blank=True, help_text="Timestamp when phone was verified")
+
+    # V2 Mobile - Passcode Authentication (6-digit)
+    passcode_hash = models.CharField(null=True, blank=True, max_length=255, help_text="Hashed 6-digit passcode for quick login")
+    passcode_set = models.BooleanField(default=False, help_text="Whether user has set a passcode")
+    biometric_enabled = models.BooleanField(default=False, help_text="Whether biometric authentication is enabled")
+
+    # V2 Mobile - Transaction Limits & Restrictions
+    daily_limit = models.BigIntegerField(default=10000000, help_text="Daily transaction limit in kobo (default: ₦100,000)")
+    per_transaction_limit = models.BigIntegerField(default=5000000, help_text="Per transaction limit in kobo (default: ₦50,000)")
+    monthly_limit = models.BigIntegerField(default=100000000, help_text="Monthly transaction limit in kobo (default: ₦1,000,000)")
+    limit_restricted_until = models.DateTimeField(null=True, blank=True, help_text="Timestamp until which transaction limits are restricted")
+    restricted_limit = models.BigIntegerField(null=True, blank=True, help_text="Restricted transaction limit in kobo during restriction period")
+
+    # V2 Mobile - Enhanced Verification
+    verification_status = models.CharField(
+        max_length=20,
+        choices=[
+            ('pending', 'Pending'),
+            ('verified', 'Verified'),
+            ('rejected', 'Rejected')
+        ],
+        default='pending',
+        help_text="Overall KYC verification status"
+    )
+
+    # Transaction PIN (existing, kept for backwards compatibility)
     transaction_pin = models.CharField(null=True, max_length=200, help_text="Hashed transaction PIN for withdrawals")
     transaction_pin_set = models.BooleanField(default=False, help_text="Whether user has set a transaction PIN")
+
+    # Soft Delete Support
+    deleted_at = models.DateTimeField(null=True, blank=True, help_text="Timestamp when user was soft deleted")
+    last_login_at = models.DateTimeField(null=True, blank=True, help_text="Last login timestamp (more precise than last_login)")
  
 
     indexes = [
@@ -135,15 +168,93 @@ class UserModel(BaseModel, AbstractBaseUser,PermissionsMixin):
             raise ValueError("Transaction PIN must be 4-6 digits")
         if not str(raw_pin).isdigit():
             raise ValueError("Transaction PIN must contain only digits")
+        
+        was_set = self.transaction_pin_set  # Check if this is a change
         self.transaction_pin = make_password(str(raw_pin))
         self.transaction_pin_set = True
         self.save(update_fields=['transaction_pin', 'transaction_pin_set'])
-    
+        
+        # Apply restriction if PIN was changed (not first-time set)
+        if was_set:
+            self.apply_24hr_restriction()
+
     def verify_transaction_pin(self, raw_pin):
         """Verify transaction PIN"""
         if not self.transaction_pin_set or not self.transaction_pin:
             return False
         return check_password(str(raw_pin), self.transaction_pin)
+
+    def set_passcode(self, raw_passcode):
+        """Set 6-digit passcode for quick login"""
+        raw_passcode = str(raw_passcode).strip()
+
+        # Validation
+        if not raw_passcode or len(raw_passcode) != 6:
+            raise ValueError("Passcode must be exactly 6 digits")
+        if not raw_passcode.isdigit():
+            raise ValueError("Passcode must contain only digits")
+
+        # Check for sequential numbers (123456, 654321)
+        is_sequential_asc = all(int(raw_passcode[i]) == int(raw_passcode[i-1]) + 1 for i in range(1, 6))
+        is_sequential_desc = all(int(raw_passcode[i]) == int(raw_passcode[i-1]) - 1 for i in range(1, 6))
+        if is_sequential_asc or is_sequential_desc:
+            raise ValueError("Passcode cannot be sequential (e.g., 123456, 654321)")
+
+        # Check for all same digits (111111, 222222, etc.)
+        if len(set(raw_passcode)) == 1:
+            raise ValueError("Passcode cannot be all the same digit (e.g., 111111)")
+
+        was_set = self.passcode_set  # Check if this is a change
+        self.passcode_hash = make_password(raw_passcode)
+        self.passcode_set = True
+        self.save(update_fields=['passcode_hash', 'passcode_set'])
+        
+        # Apply restriction if passcode was changed (not first-time set)
+        if was_set:
+            self.apply_24hr_restriction()
+
+    def verify_passcode(self, raw_passcode):
+        """Verify 6-digit passcode"""
+        if not self.passcode_set or not self.passcode_hash:
+            return False
+        return check_password(str(raw_passcode).strip(), self.passcode_hash)
+
+    def apply_24hr_restriction(self):
+        """Apply 24-hour transaction restriction (after PIN/passcode change)"""
+        from django.utils import timezone
+        from datetime import timedelta
+
+        self.limit_restricted_until = timezone.now() + timedelta(hours=24)
+        self.restricted_limit = 1000000  # ₦10,000 in kobo
+        self.save(update_fields=['limit_restricted_until', 'restricted_limit'])
+
+    def is_restricted(self):
+        """Check if user is currently under 24-hour restriction"""
+        from django.utils import timezone
+
+        if not self.limit_restricted_until:
+            return False
+        
+        if timezone.now() >= self.limit_restricted_until:
+            # Auto-clear expired restriction
+            self.limit_restricted_until = None
+            self.restricted_limit = None
+            self.save(update_fields=['limit_restricted_until', 'restricted_limit'])
+            return False
+        
+        return True
+    
+    def get_effective_per_transaction_limit(self):
+        """Get the effective per-transaction limit (considering restrictions)"""
+        if self.is_restricted():
+            return self.restricted_limit or 1000000  # ₦10,000 default
+        return self.per_transaction_limit
+    
+    def get_effective_daily_limit(self):
+        """Get the effective daily limit (considering restrictions)"""
+        if self.is_restricted():
+            return self.restricted_limit or 1000000  # ₦10,000 default
+        return self.daily_limit
     
     def get_verified_name(self):
         """Get user's verified name from BVN or NIN"""

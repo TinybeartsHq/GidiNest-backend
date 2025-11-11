@@ -35,7 +35,9 @@ ALLOWED_HOSTS = [
     "www.gidinest.com",
     "localhost",
     "127.0.0.1",
-    "167.99.120.170",  # Your DigitalOcean server IP,
+    "167.99.120.170",  # Your DigitalOcean server IP
+    "172.20.10.7",  # Local network IP for mobile testing
+    "0.0.0.0",  # Development server
 ]
 
 
@@ -49,6 +51,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'corsheaders',  # CORS headers support
     'rest_framework',  # Django REST framework
+    'drf_spectacular',  # OpenAPI 3.0 schema generation for Swagger
     'django_celery_beat',  # Celery periodic tasks
     'django_celery_results',  # Celery task results
     'core',
@@ -58,7 +61,9 @@ INSTALLED_APPS = [
     'savings',
     'wallet',
     'community',
-    'providers'
+    'providers',
+    'dashboard',  # V2 Mobile - Unified dashboard
+    'transactions',  # V2 Mobile - Comprehensive transactions
 ]
 
 MIDDLEWARE = [
@@ -244,14 +249,19 @@ REST_FRAMEWORK = {
         'rest_framework.filters.SearchFilter', # Enable search globally
         'rest_framework.filters.OrderingFilter', # Enable ordering globally
     ],
+
+    # drf-spectacular settings for OpenAPI schema generation
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
 }
 
 
 SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(days=14),
-    'REFRESH_TOKEN_LIFETIME': timedelta(days=30),  # optional if you're using refresh
-    'ROTATE_REFRESH_TOKENS': False,
-    'BLACKLIST_AFTER_ROTATION': True,
+    # V2 Mobile: Short-lived access tokens (1 hour) for better security
+    # V1 Web: Can use refresh token to get new access tokens
+    'ACCESS_TOKEN_LIFETIME': timedelta(hours=1),  # Changed from 14 days to 1 hour for V2
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=30),  # Refresh tokens remain valid for 30 days
+    'ROTATE_REFRESH_TOKENS': True,  # Enable token rotation for better security
+    'BLACKLIST_AFTER_ROTATION': True,  # Blacklist old refresh tokens after rotation
     'ALGORITHM': 'HS256',
     'SIGNING_KEY': SECRET_KEY,
     'UPDATE_LAST_LOGIN': True,
@@ -261,6 +271,72 @@ SIMPLE_JWT = {
     'AUTH_TOKEN_CLASSES': ('rest_framework_simplejwt.tokens.AccessToken',),
     'TOKEN_TYPE_CLAIM': 'token_type',
     'JTI_CLAIM': 'jti',
+}
+
+
+# drf-spectacular OpenAPI settings
+SPECTACULAR_SETTINGS = {
+    'TITLE': 'GidiNest API',
+    'DESCRIPTION': '''
+    GidiNest API Documentation
+
+    ## Authentication
+    All endpoints (except registration and login) require JWT authentication.
+    Use the format: `Bearer <access_token>` in the Authorization header.
+
+    ## API Versions
+    - **V1**: Web Application (Production - FROZEN)
+    - **V2**: Mobile Application (Development)
+
+    ## Response Format
+    All responses follow a standard structure with `success`, `message`, and `data` fields.
+    ''',
+    'VERSION': '2.0.0',
+    'SERVE_INCLUDE_SCHEMA': False,
+    'SWAGGER_UI_SETTINGS': {
+        'deepLinking': True,
+        'persistAuthorization': True,
+        'displayOperationId': True,
+        'filter': True,
+        'docExpansion': 'none',
+    },
+    'COMPONENT_SPLIT_REQUEST': True,
+    'SCHEMA_PATH_PREFIX': r'/api/v[0-9]',
+    'SERVE_PERMISSIONS': ['rest_framework.permissions.AllowAny'],
+    'SERVERS': [
+        {'url': 'https://api.gidinest.com', 'description': 'Production Server'},
+        {'url': 'http://localhost:8000', 'description': 'Local Development Server'},
+    ],
+    'EXTERNAL_DOCS': {
+        'description': 'Full API Documentation',
+        'url': 'https://docs.gidinest.com',
+    },
+    'TAGS': [
+        {'name': 'V1 - Authentication', 'description': 'Web app authentication endpoints'},
+        {'name': 'V1 - Account', 'description': 'Web app account management'},
+        {'name': 'V1 - Wallet', 'description': 'Web app wallet operations'},
+        {'name': 'V1 - Savings', 'description': 'Web app savings goals'},
+        {'name': 'V1 - Community', 'description': 'Web app community posts'},
+        {'name': 'V2 - Auth', 'description': 'Mobile app authentication'},
+        {'name': 'V2 - Dashboard', 'description': 'Mobile app dashboard'},
+        {'name': 'V2 - Profile', 'description': 'Mobile app profile management'},
+        {'name': 'V2 - Wallet', 'description': 'Mobile app wallet operations'},
+        {'name': 'V2 - Transactions', 'description': 'Mobile app transactions'},
+        {'name': 'V2 - Savings', 'description': 'Mobile app savings goals'},
+        {'name': 'V2 - Community', 'description': 'Mobile app community'},
+        {'name': 'V2 - Notifications', 'description': 'Mobile app notifications'},
+        {'name': 'V2 - KYC', 'description': 'Mobile app KYC verification'},
+    ],
+    'SECURITY': [{'bearerAuth': []}],
+    'APPEND_COMPONENTS': {
+        'securitySchemes': {
+            'bearerAuth': {
+                'type': 'http',
+                'scheme': 'bearer',
+                'bearerFormat': 'JWT',
+            }
+        }
+    },
 }
 
 
