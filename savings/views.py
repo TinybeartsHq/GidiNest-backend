@@ -69,6 +69,69 @@ class SavingsGoalAPIView(APIView):
     
 
 
+class FundSavingsGoalAPIView(APIView):
+    """
+    API endpoint to fund (contribute to) a specific savings goal.
+    URL parameter: goal_id
+    Request body: 'amount', 'description' (optional)
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, goal_id, *args, **kwargs):
+        amount = request.data.get('amount')
+        description = request.data.get('description', '')
+
+        if not amount:
+            return validation_error_response({"detail": "amount is required."})
+
+        try:
+            amount = Decimal(str(amount))
+            if amount <= 0:
+                raise ValueError("Amount must be a positive number.")
+        except (ValueError, TypeError):
+            return validation_error_response({"detail": "Invalid amount provided."})
+
+        try:
+            goal = SavingsGoalModel.objects.get(id=goal_id, user=request.user)
+            wallet = request.user.wallet
+        except SavingsGoalModel.DoesNotExist:
+            return error_response("Savings goal not found or does not belong to user.")
+        except ObjectDoesNotExist:
+            return error_response("User wallet not found. Please contact support.")
+
+        with transaction.atomic():
+            try:
+                # Create a WalletTransaction entry
+                WalletTransaction.objects.create(
+                    wallet=wallet,
+                    transaction_type='debit',
+                    amount=amount,
+                    description=f"Deposit into {goal.name} savings goal.",
+                )
+                wallet.withdraw(amount)
+
+                goal.amount += amount
+                goal.save(update_fields=['amount', 'updated_at'])
+
+                # Record the transaction for this specific goal
+                SavingsGoalTransaction.objects.create(
+                    goal=goal,
+                    transaction_type='contribution',
+                    amount=amount,
+                    description=description,
+                    goal_current_amount=goal.amount
+                )
+
+                return success_response(message=f"Successfully funded goal: {goal.name}")
+
+            except ValueError as e:
+                print(e)
+                return error_response(f"An error occurred during transaction: {e}")
+            except Exception as e:
+                print(e)
+                return error_response(f"An error occurred during transaction: {e}")
+
+
 class SavingsGoalContributeWithdrawAPIView(APIView):
     """
     API endpoint to contribute to or withdraw from a specific savings goal.
@@ -82,7 +145,7 @@ class SavingsGoalContributeWithdrawAPIView(APIView):
         amount = request.data.get('amount')
         transaction_type = request.data.get('transaction_type') # 'contribution' or 'withdrawal'
         description = request.data.get('description', '')
-        
+
 
         if not all([goal_id, amount, transaction_type]):
             return validation_error_response({"detail": "goal_id, amount, and transaction_type are required."})
@@ -106,7 +169,7 @@ class SavingsGoalContributeWithdrawAPIView(APIView):
             return error_response( "User wallet not found. Please contact support.")
 
         with transaction.atomic(): # Ensure both operations (wallet & goal update) are atomic
-            
+
             try:
                 if transaction_type == 'contribution':
                     # Create a WalletTransaction entry (assuming 'credit' is the event type for deposits)
@@ -115,7 +178,7 @@ class SavingsGoalContributeWithdrawAPIView(APIView):
                         transaction_type='debit',  # This is a debit to the wallet
                         amount=amount,
                         description=f"Deposit into {goal.name} savings goal.",
-                
+
                     )
                     wallet.withdraw(amount) # Deduct from main wallet
 
@@ -131,7 +194,7 @@ class SavingsGoalContributeWithdrawAPIView(APIView):
                         transaction_type='credit',  # This is a credit to the wallet
                         amount=amount,
                         description=f"Withrawal from {goal.name} savings goal.",
-                
+
                     )
 
                     wallet.deposit(amount) # Add to main wallet

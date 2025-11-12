@@ -72,3 +72,6 @@ celerybeat.pid
 # Logs
 logs/
 *.log
+
+# Documentation Archive (files moved to external platform)
+docs_archive/

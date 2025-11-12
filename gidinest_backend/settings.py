@@ -36,7 +36,8 @@ ALLOWED_HOSTS = [
     "localhost",
     "127.0.0.1",
     "167.99.120.170",  # Your DigitalOcean server IP
-    "172.20.10.7",  # Local network IP for mobile testing
+    "172.20.10.7",   # Current local network IP for mobile testing
+    "172.20.10.11",  # Previous local network IP for mobile testing
     "0.0.0.0",  # Development server
 ]
 
@@ -278,18 +279,73 @@ SIMPLE_JWT = {
 SPECTACULAR_SETTINGS = {
     'TITLE': 'GidiNest API',
     'DESCRIPTION': '''
-    GidiNest API Documentation
+    # GidiNest API Documentation
 
-    ## Authentication
+    ## 🎯 Choose Your API Version
+
+    ### **Building a Web Application?**
+    👉 Use **V1 API** - Filter by tags starting with "V1"
+    - Base URL: `/api/v1/`
+    - Status: **Production - FROZEN** (stable, no breaking changes)
+    - Purpose: Web dashboard and admin portal
+    - Quick Start: See `/docs/frontend/QUICK_START.md`
+
+    ### **Building a Mobile Application (iOS/Android)?**
+    👉 Use **V2 API** - Filter by tags starting with "V2"
+    - Base URL: `/api/v2/`
+    - Status: **Active Development** (new features added regularly)
+    - Purpose: Native mobile apps
+    - Quick Start: See `/docs/mobile/QUICK_START.md`
+
+    ---
+
+    ## 🔐 Authentication
+
     All endpoints (except registration and login) require JWT authentication.
-    Use the format: `Bearer <access_token>` in the Authorization header.
+    
+    **Header Format:**
+    ```
+    Authorization: Bearer <access_token>
+    ```
 
-    ## API Versions
-    - **V1**: Web Application (Production - FROZEN)
-    - **V2**: Mobile Application (Development)
+    **Token Differences:**
+    - **V1 (Web):** Longer-lived tokens suitable for web sessions
+    - **V2 (Mobile):** Short-lived tokens (1 hour) with refresh mechanism
 
-    ## Response Format
-    All responses follow a standard structure with `success`, `message`, and `data` fields.
+    ---
+
+    ## 📊 Response Format
+
+    All responses follow a standard structure:
+    ```json
+    {
+      "success": true|false,
+      "message": "Human-readable message",
+      "data": { /* Response data */ }
+    }
+    ```
+
+    ---
+
+    ## 🔍 Using This Documentation
+
+    1. **Filter by Platform:** Use the tag filter to show only V1 (Web) or V2 (Mobile) endpoints
+    2. **Test Endpoints:** Click "Try it out" to test endpoints directly
+    3. **Authorize:** Click the "Authorize" button to add your JWT token
+    4. **View Examples:** See request/response examples for each endpoint
+
+    ---
+
+    ## 📚 Additional Resources
+
+    - **API Guide:** `/docs/API_GUIDE.md`
+    - **Frontend Guide:** `/docs/frontend/QUICK_START.md`
+    - **Mobile Guide:** `/docs/mobile/QUICK_START.md`
+    - **Legacy Docs:** `/docs/api/` (markdown files)
+
+    ---
+
+    **Note:** This documentation is auto-generated from code and always up-to-date.
     ''',
     'VERSION': '2.0.0',
     'SERVE_INCLUDE_SCHEMA': False,
@@ -375,6 +431,9 @@ CSRF_TRUSTED_ORIGINS = [
     "http://127.0.0.1:3001",
     "http://127.0.0.1:3039",  # Your current frontend port
     "http://127.0.0.1:5173",
+    # Mobile app local network testing
+    "http://172.20.10.7:8000",
+    "http://172.20.10.11:8000",
 ]
 
 
