@@ -21,6 +21,14 @@ class CreateGoalPaymentLinkAPIView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request, *args, **kwargs):
+        # Check if user has a wallet
+        try:
+            wallet = request.user.wallet
+            if not wallet.account_number:
+                return error_response("Your wallet is not fully set up. Please complete wallet setup first.")
+        except ObjectDoesNotExist:
+            return error_response("You don't have a wallet yet. Please verify your BVN or NIN to activate your wallet.")
+
         goal_id = request.data.get('goal_id')
         description = request.data.get('description', '')
         target_amount = request.data.get('target_amount')
@@ -69,6 +77,14 @@ class CreateEventPaymentLinkAPIView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request, *args, **kwargs):
+        # Check if user has a wallet
+        try:
+            wallet = request.user.wallet
+            if not wallet.account_number:
+                return error_response("Your wallet is not fully set up. Please complete wallet setup first.")
+        except ObjectDoesNotExist:
+            return error_response("You don't have a wallet yet. Please verify your BVN or NIN to activate your wallet.")
+
         event_name = request.data.get('event_name')
         event_date = request.data.get('event_date')
         event_description = request.data.get('event_description', '')
@@ -131,6 +147,14 @@ class CreateWalletPaymentLinkAPIView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request, *args, **kwargs):
+        # Check if user has a wallet
+        try:
+            wallet = request.user.wallet
+            if not wallet.account_number:
+                return error_response("Your wallet is not fully set up. Please complete wallet setup first.")
+        except ObjectDoesNotExist:
+            return error_response("You don't have a wallet yet. Please verify your BVN or NIN to activate your wallet.")
+
         description = request.data.get('description', 'Fund my wallet')
         target_amount = request.data.get('target_amount')
         show_contributors = request.data.get('show_contributors', 'public')
@@ -157,6 +181,9 @@ class CreateWalletPaymentLinkAPIView(APIView):
             )
 
         except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Failed to create wallet payment link: {str(e)}", exc_info=True)
             return error_response(f"Failed to create payment link: {str(e)}")
 
 
