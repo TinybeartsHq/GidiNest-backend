@@ -1269,7 +1269,29 @@ class EmbedlyWebhookView(APIView):
                 except Exception as deposit_error:
                     logger.error(f"Failed to deposit {amount} to wallet {wallet.account_number}: {str(deposit_error)}")
                     raise  # Re-raise to rollback the transaction
-                
+
+                # Check if this is a payment link contribution
+                try:
+                    from wallet.payment_link_helpers import process_payment_link_contribution
+                    is_payment_link, payment_link = process_payment_link_contribution(
+                        reference=reference,
+                        wallet_transaction=wallet_transaction,
+                        sender_name=sender_name
+                    )
+
+                    if is_payment_link:
+                        logger.info(f"Processed payment link contribution for reference: {reference}")
+                        # Return early - payment link handler will send its own notifications
+                        return JsonResponse({
+                            'status': 'success',
+                            'message': 'Payment link contribution processed successfully',
+                            'data': payload,
+                            'timestamp': str(wallet_transaction.created_at)
+                        }, status=200)
+                except Exception as pl_error:
+                    logger.error(f"Error processing payment link contribution: {str(pl_error)}")
+                    # Continue with normal flow if payment link processing fails
+
         except IntegrityError as e:
             logger.warning(f"IntegrityError for reference {reference}: {str(e)}")
             return JsonResponse({'error': 'Transaction with this reference has been processed'}, status=200)
