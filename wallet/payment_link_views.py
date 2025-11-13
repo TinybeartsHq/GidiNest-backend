@@ -21,12 +21,18 @@ class CreateGoalPaymentLinkAPIView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request, *args, **kwargs):
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"Create goal payment link request data: {request.data}")
+
         # Check if user has a wallet
         try:
             wallet = request.user.wallet
             if not wallet.account_number:
+                logger.error(f"User {request.user.email} wallet not fully set up")
                 return error_response("Your wallet is not fully set up. Please complete wallet setup first.")
         except ObjectDoesNotExist:
+            logger.error(f"User {request.user.email} has no wallet")
             return error_response("You don't have a wallet yet. Please verify your BVN or NIN to activate your wallet.")
 
         goal_id = request.data.get('goal_id')
@@ -36,14 +42,22 @@ class CreateGoalPaymentLinkAPIView(APIView):
         expires_at = request.data.get('expires_at')
         custom_message = request.data.get('custom_message', 'Thank you for your contribution!')
 
+        logger.info(f"Attempting to create payment link for goal_id: {goal_id}")
+
         # Validate goal
         if not goal_id:
+            logger.error("No goal_id provided")
             return validation_error_response({'goal_id': 'Goal ID is required'})
 
         try:
             goal = SavingsGoalModel.objects.get(id=goal_id, user=request.user)
+            logger.info(f"Found goal: {goal.name}")
         except SavingsGoalModel.DoesNotExist:
+            logger.error(f"Goal {goal_id} not found for user {request.user.email}")
             return error_response('Savings goal not found or does not belong to you')
+        except Exception as e:
+            logger.error(f"Error finding goal: {str(e)}")
+            return error_response(f'Error finding goal: {str(e)}')
 
         # Create payment link
         try:
@@ -59,6 +73,7 @@ class CreateGoalPaymentLinkAPIView(APIView):
                 allow_custom_amount=True
             )
 
+            logger.info(f"Payment link created successfully: {payment_link.token}")
             serializer = PaymentLinkSerializer(payment_link)
             return success_response(
                 message="Payment link created successfully",
@@ -66,6 +81,7 @@ class CreateGoalPaymentLinkAPIView(APIView):
             )
 
         except Exception as e:
+            logger.error(f"Failed to create payment link: {str(e)}", exc_info=True)
             return error_response(f"Failed to create payment link: {str(e)}")
 
 
