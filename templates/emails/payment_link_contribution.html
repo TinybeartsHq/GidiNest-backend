@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>New Contribution Received!</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #f8f9fa;
+      color: #333;
+      margin: 0;
+      padding: 0;
+    }
+    .email-container {
+      max-width: 600px;
+      margin: 40px auto;
+      background-color: #ffffff;
+      padding: 30px;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+    }
+    h2 {
+      color: #b3508b; /* Soft magenta/purple */
+    }
+    .contribution-box {
+      background-color: #f0f8ff;
+      padding: 20px;
+      border-radius: 8px;
+      margin: 20px 0;
+      border-left: 4px solid #b3508b;
+    }
+    .contribution-amount {
+      font-size: 32px;
+      font-weight: bold;
+      color: #b3508b;
+      margin: 10px 0;
+    }
+    .btn {
+      display: inline-block;
+      background-color: #b3508b;
+      color: #ffffff !important;
+      padding: 12px 24px;
+      margin: 24px 0;
+      border-radius: 5px;
+      text-decoration: none;
+      font-size: 16px;
+      font-weight: bold;
+    }
+    p {
+      font-size: 16px;
+      line-height: 1.6;
+    }
+    .footer {
+      font-size: 12px;
+      color: #999;
+      margin-top: 30px;
+      text-align: center;
+    }
+    .logo {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+    .logo img {
+      max-width: 120px;
+    }
+    .progress-info {
+      background-color: #f9f9f9;
+      padding: 15px;
+      border-radius: 5px;
+      margin: 15px 0;
+    }
+    .progress-bar {
+      width: 100%;
+      height: 20px;
+      background-color: #e0e0e0;
+      border-radius: 10px;
+      overflow: hidden;
+      margin: 10px 0;
+    }
+    .progress-fill {
+      height: 100%;
+      background-color: #b3508b;
+      transition: width 0.3s ease;
+    }
+  </style>
+</head>
+<body>
+  <div class="email-container">
+    <div class="logo">
+      <img src="https://app.gidinest.com/assets/icons/Logo%202.png" alt="Gidinest Logo" />
+    </div>
+
+    <h2>🎉 New Contribution Received!</h2>
+
+    <p>Dear {{ to_name }},</p>
+
+    <p>Great news! You've received a new contribution for <strong>{{ context_name }}</strong>.</p>
+
+    <div class="contribution-box">
+      <p style="margin: 0; color: #666;">Contributor</p>
+      <p style="font-size: 20px; font-weight: bold; margin: 5px 0;">{{ contributor_name }}</p>
+
+      <p style="margin: 15px 0 0 0; color: #666;">Contribution Amount</p>
+      <div class="contribution-amount">{{ amount }}</div>
+    </div>
+
+    <div class="progress-info">
+      <p style="margin: 0; color: #666;">Progress Update</p>
+      <p style="font-size: 18px; font-weight: bold; margin: 5px 0;">
+        {{ total_raised }} raised of {{ target_amount }}
+      </p>
+      <!-- Note: Progress bar percentage would be calculated dynamically -->
+    </div>
+
+    <p>
+      This contribution has been automatically added to your <strong>{{ link_type }}</strong>.
+    </p>
+
+    <p>
+      <a href="https://app.gidinest.com/dashboard" class="btn">View Dashboard</a>
+    </p>
+
+    <p style="color: #666; font-size: 14px;">
+      You can view all contributions and analytics from your dashboard.
+    </p>
+
+    <div class="footer">
+      &copy; Gidinest. All rights reserved.<br/>
+      Need help? Contact us at support@gidinest.com
+    </div>
+  </div>
+</body>
+</html>

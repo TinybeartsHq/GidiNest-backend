@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Payment Confirmed - Thank You!</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #f8f9fa;
+      color: #333;
+      margin: 0;
+      padding: 0;
+    }
+    .email-container {
+      max-width: 600px;
+      margin: 40px auto;
+      background-color: #ffffff;
+      padding: 30px;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+    }
+    h2 {
+      color: #b3508b;
+    }
+    .success-icon {
+      text-align: center;
+      font-size: 64px;
+      margin: 20px 0;
+    }
+    .payment-details {
+      background-color: #f0f8ff;
+      padding: 20px;
+      border-radius: 8px;
+      margin: 20px 0;
+      border-left: 4px solid #b3508b;
+    }
+    .amount {
+      font-size: 28px;
+      font-weight: bold;
+      color: #b3508b;
+      margin: 10px 0;
+    }
+    .btn {
+      display: inline-block;
+      background-color: #b3508b;
+      color: #ffffff !important;
+      padding: 12px 24px;
+      margin: 24px 0;
+      border-radius: 5px;
+      text-decoration: none;
+      font-size: 16px;
+      font-weight: bold;
+      text-align: center;
+    }
+    p {
+      font-size: 16px;
+      line-height: 1.6;
+    }
+    .footer {
+      font-size: 12px;
+      color: #999;
+      margin-top: 30px;
+      text-align: center;
+    }
+    .logo {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+    .logo img {
+      max-width: 120px;
+    }
+    .custom-message {
+      background-color: #fff8e1;
+      padding: 15px;
+      border-radius: 8px;
+      margin: 20px 0;
+      border-left: 4px solid #ffc107;
+      font-style: italic;
+    }
+  </style>
+</head>
+<body>
+  <div class="email-container">
+    <div class="logo">
+      <img src="https://app.gidinest.com/assets/icons/Logo%202.png" alt="Gidinest Logo" />
+    </div>
+
+    <div class="success-icon">✓</div>
+
+    <h2 style="text-align: center;">Payment Confirmed!</h2>
+
+    <p>Dear Contributor,</p>
+
+    <p>
+      Thank you for your generous contribution! Your payment has been successfully received and processed.
+    </p>
+
+    <div class="payment-details">
+      <p style="margin: 0; color: #666;">You contributed to</p>
+      <p style="font-size: 20px; font-weight: bold; margin: 5px 0;">{{ goal_or_event_name }}</p>
+
+      <p style="margin: 15px 0 0 0; color: #666;">Your Contribution</p>
+      <div class="amount">{{ amount }}</div>
+
+      <p style="margin: 15px 0 0 0; color: #666;">Payment Reference</p>
+      <p style="font-family: monospace; color: #666; margin: 5px 0;">{{ payment_reference }}</p>
+    </div>
+
+    {% if custom_message %}
+    <div class="custom-message">
+      <p style="margin: 0; color: #666; font-size: 14px;">Message from the organizer:</p>
+      <p style="margin: 10px 0 0 0; font-size: 16px;">{{ custom_message }}</p>
+    </div>
+    {% endif %}
+
+    <p style="text-align: center;">
+      <a href="https://app.gidinest.com/pay/{{ token }}/confirmed" class="btn">View Confirmation Page</a>
+    </p>
+
+    <p style="color: #666; font-size: 14px;">
+      Your contribution helps make a difference. Thank you for your support!
+    </p>
+
+    <div class="footer">
+      &copy; Gidinest. All rights reserved.<br/>
+      Questions? Contact us at support@gidinest.com
+    </div>
+  </div>
+</body>
+</html>

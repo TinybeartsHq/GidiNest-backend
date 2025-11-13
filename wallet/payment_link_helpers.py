@@ -207,6 +207,37 @@ def _send_payment_link_notifications(payment_link, contribution, wallet_transact
     except Exception as e:
         logger.error(f"Failed to send payment link push notification: {str(e)}")
 
+    # Send confirmation email to contributor (if email available)
+    if contribution.contributor_email:
+        try:
+            from django.conf import settings
+            emailclient = MailClient()
+
+            # Get goal/event name for display
+            if payment_link.link_type == 'savings_goal' and payment_link.savings_goal:
+                goal_or_event_name = payment_link.savings_goal.name
+            elif payment_link.link_type == 'event' and payment_link.event_name:
+                goal_or_event_name = payment_link.event_name
+            else:
+                goal_or_event_name = "General Wallet Funding"
+
+            emailclient.send_email(
+                to_email=contribution.contributor_email,
+                subject="Payment Confirmed - Thank You!",
+                template_name="emails/payment_link_contributor_confirmation.html",
+                context={
+                    "goal_or_event_name": goal_or_event_name,
+                    "amount": f"{currency} {amount}",
+                    "payment_reference": contribution.external_reference,
+                    "custom_message": payment_link.custom_message,
+                    "token": payment_link.token,
+                },
+                to_name=contributor_name
+            )
+            logger.info(f"Contributor confirmation email sent to {contribution.contributor_email}")
+        except Exception as e:
+            logger.error(f"Failed to send contributor confirmation email: {str(e)}")
+
 
 def generate_payment_reference(payment_link):
     """
