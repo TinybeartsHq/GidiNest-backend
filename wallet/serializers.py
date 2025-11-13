@@ -50,17 +50,13 @@ class PaymentLinkSerializer(serializers.ModelSerializer):
     contributor_count = serializers.SerializerMethodField()
     target_reached = serializers.SerializerMethodField()
     link_url = serializers.SerializerMethodField()
+    bank_details = serializers.SerializerMethodField()
+    payment_reference = serializers.SerializerMethodField()
 
     # Nested fields
     savings_goal_name = serializers.CharField(source='savings_goal.name', read_only=True)
     savings_goal_target = serializers.DecimalField(source='savings_goal.target_amount', max_digits=15, decimal_places=2, read_only=True)
     savings_goal_current = serializers.DecimalField(source='savings_goal.amount', max_digits=15, decimal_places=2, read_only=True)
-
-    # Account details
-    account_number = serializers.CharField(source='user.wallet.account_number', read_only=True)
-    account_name = serializers.CharField(source='user.wallet.account_name', read_only=True)
-    bank = serializers.CharField(source='user.wallet.bank', read_only=True)
-    bank_code = serializers.CharField(source='user.wallet.bank_code', read_only=True)
 
     class Meta:
         model = PaymentLink
@@ -71,11 +67,11 @@ class PaymentLinkSerializer(serializers.ModelSerializer):
             'show_contributors', 'custom_message', 'description', 'is_active',
             'expires_at', 'one_time_use', 'used', 'created_at', 'updated_at',
             'total_raised', 'contributor_count', 'target_reached', 'link_url',
-            'account_number', 'account_name', 'bank', 'bank_code'
+            'bank_details', 'payment_reference'
         ]
         read_only_fields = ['id', 'token', 'created_at', 'updated_at', 'used',
                             'total_raised', 'contributor_count', 'target_reached',
-                            'link_url', 'account_number', 'account_name', 'bank', 'bank_code']
+                            'link_url', 'bank_details', 'payment_reference']
 
     def get_total_raised(self, obj):
         return str(obj.get_total_raised())
@@ -90,6 +86,39 @@ class PaymentLinkSerializer(serializers.ModelSerializer):
         from django.conf import settings
         base_url = getattr(settings, 'FRONTEND_URL', 'https://gidinest.com')
         return f"{base_url}/pay/{obj.token}"
+
+    def get_bank_details(self, obj):
+        """
+        Return bank account details for contributors to make payments.
+        This is populated from the goal owner's wallet.
+        """
+        try:
+            wallet = obj.user.wallet
+            return {
+                'bank_name': wallet.bank or '',
+                'bank_code': wallet.bank_code or '',
+                'account_number': wallet.account_number or '',
+                'account_name': wallet.account_name or '',
+                'currency': wallet.currency or 'NGN'
+            }
+        except Exception:
+            return {
+                'bank_name': '',
+                'bank_code': '',
+                'account_number': '',
+                'account_name': '',
+                'currency': 'NGN'
+            }
+
+    def get_payment_reference(self, obj):
+        """
+        Generate a unique payment reference for this payment link.
+        Format: PL-{token}-{timestamp}
+        Contributors MUST use this reference when making payments.
+        """
+        import time
+        timestamp = int(time.time())
+        return f"PL-{obj.token}-{timestamp}"
 
     def validate(self, data):
         # Validate link_type specific requirements
@@ -129,18 +158,14 @@ class PaymentLinkPublicSerializer(serializers.ModelSerializer):
     can_accept_payments = serializers.SerializerMethodField()
     recent_contributors = serializers.SerializerMethodField()
     progress_percentage = serializers.SerializerMethodField()
+    bank_details = serializers.SerializerMethodField()
+    payment_reference = serializers.SerializerMethodField()
 
     # Nested fields
     savings_goal_name = serializers.CharField(source='savings_goal.name', read_only=True)
     savings_goal_target = serializers.DecimalField(source='savings_goal.target_amount', max_digits=15, decimal_places=2, read_only=True)
     savings_goal_current = serializers.DecimalField(source='savings_goal.amount', max_digits=15, decimal_places=2, read_only=True)
     savings_goal_description = serializers.CharField(source='savings_goal.description', read_only=True)
-
-    # Account details for payment
-    account_number = serializers.CharField(source='user.wallet.account_number', read_only=True)
-    account_name = serializers.CharField(source='user.wallet.account_name', read_only=True)
-    bank = serializers.CharField(source='user.wallet.bank', read_only=True)
-    bank_code = serializers.CharField(source='user.wallet.bank_code', read_only=True)
 
     class Meta:
         model = PaymentLink
@@ -151,7 +176,7 @@ class PaymentLinkPublicSerializer(serializers.ModelSerializer):
             'fixed_amount', 'show_contributors', 'custom_message', 'description',
             'total_raised', 'contributor_count', 'target_reached', 'is_expired',
             'can_accept_payments', 'recent_contributors', 'progress_percentage',
-            'account_number', 'account_name', 'bank', 'bank_code'
+            'bank_details', 'payment_reference'
         ]
 
     def get_total_raised(self, obj):
@@ -209,3 +234,36 @@ class PaymentLinkPublicSerializer(serializers.ModelSerializer):
                 })
 
         return result
+
+    def get_bank_details(self, obj):
+        """
+        Return bank account details for contributors to make payments.
+        This is populated from the goal owner's wallet.
+        """
+        try:
+            wallet = obj.user.wallet
+            return {
+                'bank_name': wallet.bank or '',
+                'bank_code': wallet.bank_code or '',
+                'account_number': wallet.account_number or '',
+                'account_name': wallet.account_name or '',
+                'currency': wallet.currency or 'NGN'
+            }
+        except Exception:
+            return {
+                'bank_name': '',
+                'bank_code': '',
+                'account_number': '',
+                'account_name': '',
+                'currency': 'NGN'
+            }
+
+    def get_payment_reference(self, obj):
+        """
+        Generate a unique payment reference for this payment link.
+        Format: PL-{token}-{timestamp}
+        Contributors MUST use this reference when making payments.
+        """
+        import time
+        timestamp = int(time.time())
+        return f"PL-{obj.token}-{timestamp}"
