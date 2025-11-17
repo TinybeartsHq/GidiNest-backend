@@ -115,6 +115,7 @@ class UpdateBVNView(APIView):
         user.save(update_fields=["account_tier"])
 
         # Create wallet if user doesn't have one yet
+        # This ensures wallet is created after successful BVN verification
         if not user.has_virtual_wallet and user.embedly_customer_id:
             return self._create_wallet_for_user(user, embedly_client)
 
@@ -266,10 +267,12 @@ class UpdateNINView(APIView):
                     user.save(update_fields=["account_tier"])
 
                 # IMPORTANT: Check if wallet needs to be created
-                # This was previously missing and caused users to not get wallets
+                # This ensures users get wallets even in the edge case where BVN was verified
+                # but wallet creation failed or was skipped
                 if not user.has_virtual_wallet and user.embedly_customer_id:
                     return self._create_wallet_for_user(user, embedly_client)
 
+                # Build success message
                 success_msg = {
                     "message": "Congratulations! You now have Tier 2 access!",
                     "details": "Both BVN and NIN are now verified. You have unlocked higher transaction limits!",
@@ -285,10 +288,7 @@ class UpdateNINView(APIView):
                     "next_steps": "Complete address verification and upload proof of address (utility bill) to upgrade to Tier 3 (Unlimited) - coming soon"
                 }
 
-                if user.has_bvn:
-                    return success_response(success_msg)
-
-                return success_response("NIN added successfully!")
+                return success_response(success_msg if user.has_bvn else "NIN added successfully!")
             else:
                 return error_response(res.get("message", "NIN verification failed."))
 
@@ -330,6 +330,7 @@ class UpdateNINView(APIView):
         user.save(update_fields=["account_tier"])
 
         # Create wallet if user doesn't have one yet
+        # This ensures wallet is created after successful NIN verification
         if not user.has_virtual_wallet and user.embedly_customer_id:
             return self._create_wallet_for_user(user, embedly_client)
 
