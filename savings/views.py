@@ -140,6 +140,15 @@ class SavingsGoalContributeWithdrawAPIView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
+    def get(self, request, *args, **kwargs):
+        """
+        GET method is not supported. This endpoint only accepts POST requests.
+        Returns helpful error message for debugging.
+        """
+        return error_response(
+            "This endpoint only accepts POST requests. Please send your request with method='POST' and include goal_id, amount, and transaction_type in the request body.",
+        )
+
     def post(self, request, *args, **kwargs):
         goal_id = request.data.get('goal_id')
         amount = request.data.get('amount')
