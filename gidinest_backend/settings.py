@@ -502,6 +502,7 @@ LOGGING = {
         },
     },
     'loggers': {
+        # Django framework loggers
         'django': {
             'handlers': ['console', 'database'],
             'level': 'INFO',
@@ -509,7 +510,7 @@ LOGGING = {
         },
         'django.request': {
             'handlers': ['console', 'database_errors'],
-            'level': 'ERROR',
+            'level': 'ERROR',  # Captures all 4xx and 5xx errors
             'propagate': False,
         },
         'django.server': {
@@ -517,6 +518,13 @@ LOGGING = {
             'level': 'INFO',
             'propagate': False,
         },
+        'django.db.backends': {
+            'handlers': ['console'],  # Only console for DB queries (too verbose for database)
+            'level': 'WARNING',  # Only log slow queries and errors
+            'propagate': False,
+        },
+
+        # Application loggers - all GidiNest apps
         'account': {
             'handlers': ['console', 'database'],
             'level': 'INFO',
@@ -543,6 +551,33 @@ LOGGING = {
             'propagate': False,
         },
         'providers': {
+            'handlers': ['console', 'database'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'dashboard': {
+            'handlers': ['console', 'database'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'transactions': {
+            'handlers': ['console', 'database'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'notification': {
+            'handlers': ['console', 'database'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'core': {
+            'handlers': ['console', 'database'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+
+        # Celery tasks (if you want to log background tasks)
+        'celery': {
             'handlers': ['console', 'database'],
             'level': 'INFO',
             'propagate': False,
