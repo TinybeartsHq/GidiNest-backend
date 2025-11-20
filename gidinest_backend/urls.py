@@ -17,6 +17,7 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import path, include
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView, SpectacularRedocView
+from account.admin_views import support_dashboard
 
 
 admin.site.site_header = "Gidinest Internal Admin"
@@ -26,6 +27,7 @@ admin.site.index_title = "Welcome to Gidinest Admin"
 
 urlpatterns = [
     path('internal-admin/', admin.site.urls),
+    path('internal-admin/support-dashboard/', support_dashboard, name='support_dashboard'),
 
     # ==========================================
     # API DOCUMENTATION (Swagger/OpenAPI)
