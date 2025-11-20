@@ -90,9 +90,20 @@ class UserAdmin(BaseUserAdmin):
     )
 
     add_fieldsets = (
-        (None, {
+        (_('Login Credentials'), {
             'classes': ('wide',),
-            'fields': ('email', 'password1', 'password2', 'is_active', 'is_staff'),
+            'fields': ('email', 'password1', 'password2'),
+            'description': 'Required fields for login'
+        }),
+        (_('Personal Information'), {
+            'classes': ('wide',),
+            'fields': ('first_name', 'last_name'),
+            'description': 'Optional but recommended for staff identification'
+        }),
+        (_('Permissions & Access'), {
+            'classes': ('wide',),
+            'fields': ('is_active', 'is_staff', 'is_superuser'),
+            'description': 'Check "Staff status" to grant admin panel access. Check "Superuser" for full admin rights.'
         }),
     )
 
@@ -178,6 +189,31 @@ class UserAdmin(BaseUserAdmin):
             user.apply_24hr_restriction()
             count += 1
         self.message_user(request, f'{count} users now have 24-hour transaction restrictions.', messages.WARNING)
+
+    def save_model(self, request, obj, form, change):
+        """
+        Override save to handle staff user creation properly.
+        Staff users don't need all customer fields filled.
+        """
+        # If this is a new user (not editing existing)
+        if not change:
+            # Set defaults for staff users
+            if obj.is_staff:
+                obj.is_verified = True
+                obj.email_verified = True
+                obj.account_tier = 'Staff'
+
+                # Set optional fields to prevent null issues
+                if not obj.phone:
+                    obj.phone = ''
+                if not obj.username:
+                    obj.username = obj.email.split('@')[0]
+                if not obj.first_name:
+                    obj.first_name = ''
+                if not obj.last_name:
+                    obj.last_name = ''
+
+        super().save_model(request, obj, form, change)
 
     def changelist_view(self, request, extra_context=None):
         extra_context = extra_context or {}
