@@ -6,14 +6,33 @@ from django.urls import reverse
 from django.utils import timezone
 from django.contrib import messages
 from django.db.models import Count, Q
+from django import forms
 from datetime import timedelta
 from .models.users import UserModel
 from .models import UserDevices, UserSession, UserBankAccount, CustomerNote, AdminAuditLog
 
 
+class UserChangeForm(forms.ModelForm):
+    """
+    Custom form for editing users that makes all fields optional except email.
+    This allows staff users to be saved without filling customer-specific fields.
+    """
+    class Meta:
+        model = UserModel
+        fields = '__all__'
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Make all fields optional except email
+        for field_name, field in self.fields.items():
+            if field_name != 'email':
+                field.required = False
+
+
 @admin.register(UserModel)
 class UserAdmin(BaseUserAdmin):
     model = UserModel
+    form = UserChangeForm  # Use custom form that makes fields optional
     list_display = (
         'email', 'phone', 'first_name', 'last_name', 'is_verified', 'is_staff', 'is_active',
         'account_tier', 'support_notes_count'
