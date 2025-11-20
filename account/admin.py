@@ -471,11 +471,17 @@ class AdminAuditLogAdmin(admin.ModelAdmin):
     def changes_display(self, obj):
         if obj.changes:
             import json
-            formatted = json.dumps(obj.changes, indent=2)
-            return format_html(
-                '<pre style="background: #f5f5f5; padding: 10px; overflow: auto;">{}</pre>',
-                formatted
-            )
+            try:
+                formatted = json.dumps(obj.changes, indent=2)
+                return format_html(
+                    '<pre style="background: #f5f5f5; padding: 10px; overflow: auto;">{}</pre>',
+                    formatted
+                )
+            except (TypeError, ValueError) as e:
+                return format_html(
+                    '<span style="color: red;">Error displaying changes: {}</span>',
+                    str(e)
+                )
         return 'No changes recorded'
     changes_display.short_description = 'Field Changes'
 
