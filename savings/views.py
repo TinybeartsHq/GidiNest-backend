@@ -4,6 +4,8 @@ from rest_framework import status
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
+from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiExample
+from drf_spectacular.types import OpenApiTypes
 from core.helpers.response import success_response, validation_error_response, error_response
 from wallet.models import Wallet, WalletTransaction
 from .models import SavingsGoalModel, SavingsGoalTransaction
@@ -28,6 +30,25 @@ class SavingsGoalAPIView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(
+        tags=['V1 - Savings'],
+        summary='List Savings Goals',
+        description='Get all savings goals for the authenticated user.',
+        responses={
+            200: {
+                'description': 'Savings goals retrieved successfully',
+                'content': {
+                    'application/json': {
+                        'example': {
+                            'success': True,
+                            'data': []
+                        }
+                    }
+                }
+            },
+            401: {'description': 'Unauthorized'},
+        }
+    )
     def get(self, request, *args, **kwargs):
         """
         Get all savings goals for the authenticated user.
@@ -36,6 +57,35 @@ class SavingsGoalAPIView(APIView):
         serializer = SavingsGoalSerializer(user_goals, many=True)
         return success_response(serializer.data)
 
+    @extend_schema(
+        tags=['V1 - Savings'],
+        summary='Create Savings Goal',
+        description='Create a new savings goal for the authenticated user.',
+        request=SavingsGoalSerializer,
+        responses={
+            200: {
+                'description': 'Savings goal created successfully',
+                'content': {
+                    'application/json': {
+                        'example': {
+                            'success': True,
+                            'message': 'Savings goal created successfully',
+                            'data': {
+                                'id': 'uuid',
+                                'name': 'Emergency Fund',
+                                'amount': '0.00',
+                                'target_amount': '100000.00',
+                                'interest_rate': '10.00',
+                                'status': 'active',
+                            }
+                        }
+                    }
+                }
+            },
+            400: {'description': 'Validation error'},
+            401: {'description': 'Unauthorized'},
+        }
+    )
     def post(self, request, *args, **kwargs):
         """
         Create a new savings goal for the authenticated user.
@@ -77,6 +127,46 @@ class FundSavingsGoalAPIView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(
+        tags=['V1 - Savings'],
+        summary='Fund Savings Goal',
+        description='Contribute funds to a specific savings goal. Transfers money from wallet to savings goal.',
+        parameters=[
+            OpenApiParameter(
+                name='goal_id',
+                type=OpenApiTypes.UUID,
+                location=OpenApiParameter.PATH,
+                description='Savings goal ID',
+                required=True,
+            ),
+        ],
+        request={
+            'application/json': {
+                'type': 'object',
+                'properties': {
+                    'amount': {'type': 'string', 'example': '5000.00'},
+                    'description': {'type': 'string', 'example': 'Monthly contribution'},
+                },
+                'required': ['amount']
+            }
+        },
+        responses={
+            200: {
+                'description': 'Goal funded successfully',
+                'content': {
+                    'application/json': {
+                        'example': {
+                            'success': True,
+                            'message': 'Successfully funded goal: Emergency Fund'
+                        }
+                    }
+                }
+            },
+            400: {'description': 'Validation error'},
+            401: {'description': 'Unauthorized'},
+            404: {'description': 'Savings goal or wallet not found'},
+        }
+    )
     def post(self, request, goal_id, *args, **kwargs):
         amount = request.data.get('amount')
         description = request.data.get('description', '')

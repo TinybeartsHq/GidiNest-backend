@@ -3,6 +3,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework import status
+from drf_spectacular.utils import extend_schema
 from account.models.users import UserModel
 from account.serializers import UpdateUserBVNSerializer, UpdateUserNINSerializer, UpdateUserProfileSerializer, UserProfileSerializer
 from core.helpers.response import error_response, success_response, validation_error_response
@@ -15,6 +16,22 @@ class UserProfileView(APIView):
     
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(
+        tags=['V1 - Account'],
+        summary='Get User Profile',
+        description='Retrieve the authenticated user\'s profile information.',
+        responses={
+            200: {
+                'description': 'Profile retrieved successfully',
+                'content': {
+                    'application/json': {
+                        'example': UserProfileSerializer.Meta.fields
+                    }
+                }
+            },
+            401: {'description': 'Unauthorized'},
+        }
+    )
     def get(self, request):
         """
         Retrieve the authenticated user's profile.
@@ -24,6 +41,27 @@ class UserProfileView(APIView):
   
         return Response(serializer.data, status=status.HTTP_200_OK)
 
+    @extend_schema(
+        tags=['V1 - Account'],
+        summary='Update User Profile',
+        description='Update the authenticated user\'s profile information.',
+        request=UpdateUserProfileSerializer,
+        responses={
+            200: {
+                'description': 'Profile updated successfully',
+                'content': {
+                    'application/json': {
+                        'example': {
+                            'message': 'Profile updated successfully.',
+                            'data': {}
+                        }
+                    }
+                }
+            },
+            400: {'description': 'Validation error'},
+            401: {'description': 'Unauthorized'},
+        }
+    )
     def put(self, request):
         """
         Update the authenticated user's profile.
@@ -45,6 +83,27 @@ class UpdateBVNView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(
+        tags=['V1 - Account'],
+        summary='Update BVN',
+        description='Update user\'s BVN (Bank Verification Number) and verify identity. Creates virtual wallet upon successful verification.',
+        request=UpdateUserBVNSerializer,
+        responses={
+            200: {
+                'description': 'BVN verified successfully',
+                'content': {
+                    'application/json': {
+                        'example': {
+                            'success': True,
+                            'message': 'BVN verified successfully. Virtual wallet created.'
+                        }
+                    }
+                }
+            },
+            400: {'description': 'Validation error or BVN already verified'},
+            401: {'description': 'Unauthorized'},
+        }
+    )
     def post(self, request):
         user = request.user
         serializer = UpdateUserBVNSerializer(user, data=request.data, partial=True)

@@ -100,6 +100,7 @@ whitenoise==6.11.0
 yarl==1.20.0
 django-ratelimit==4.1.0
 drf-spectacular==0.27.2
+django-jazzmin==3.0.1
 
 gunicorn==21.2.0
 dj-database-url==2.1.0

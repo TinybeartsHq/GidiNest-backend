@@ -7,6 +7,8 @@ from rest_framework import status, permissions
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
+from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiExample
+from drf_spectacular.types import OpenApiTypes
 import logging
 import hashlib
 
@@ -42,6 +44,58 @@ class SignUpView(APIView):
     """
     permission_classes = [permissions.AllowAny]
 
+    @extend_schema(
+        tags=['V2 - Auth'],
+        summary='User Registration',
+        description='Single-step user registration for mobile app. Creates a new user account and returns JWT tokens.',
+        request=SignUpSerializer,
+        responses={
+            200: {
+                'description': 'Registration successful',
+                'content': {
+                    'application/json': {
+                        'example': {
+                            'success': True,
+                            'message': 'Registration successful',
+                            'data': {
+                                'user': {
+                                    'id': 'uuid',
+                                    'email': 'user@example.com',
+                                    'first_name': 'John',
+                                    'last_name': 'Doe',
+                                    'phone': '08012345678',
+                                    'is_verified': False,
+                                    'has_passcode': False,
+                                    'has_pin': False,
+                                },
+                                'tokens': {
+                                    'access_token': 'eyJ0eXAiOiJKV1QiLCJhbGc...',
+                                    'refresh_token': 'eyJ0eXAiOiJKV1QiLCJhbGc...',
+                                    'expires_in': 3600,
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            400: {'description': 'Validation error'},
+            500: {'description': 'Server error'},
+        },
+        examples=[
+            OpenApiExample(
+                'Registration Request',
+                value={
+                    'email': 'user@example.com',
+                    'password': 'SecurePass123!',
+                    'password_confirmation': 'SecurePass123!',
+                    'first_name': 'John',
+                    'last_name': 'Doe',
+                    'phone': '08012345678',
+                    'referral_code': 'REF123',
+                }
+            )
+        ]
+    )
     def post(self, request):
         serializer = SignUpSerializer(data=request.data)
         if not serializer.is_valid():
@@ -148,6 +202,66 @@ class SignInView(APIView):
     """
     permission_classes = [permissions.AllowAny]
 
+    @extend_schema(
+        tags=['V2 - Auth'],
+        summary='User Sign In',
+        description='Sign in with email/password or 6-digit passcode. Supports device tracking for mobile apps.',
+        request=SignInSerializer,
+        responses={
+            200: {
+                'description': 'Sign in successful',
+                'content': {
+                    'application/json': {
+                        'example': {
+                            'success': True,
+                            'message': 'Sign in successful',
+                            'data': {
+                                'user': {
+                                    'id': 'uuid',
+                                    'email': 'user@example.com',
+                                    'first_name': 'John',
+                                    'last_name': 'Doe',
+                                    'is_verified': True,
+                                    'has_passcode': True,
+                                    'has_pin': True,
+                                },
+                                'tokens': {
+                                    'access_token': 'eyJ0eXAiOiJKV1QiLCJhbGc...',
+                                    'refresh_token': 'eyJ0eXAiOiJKV1QiLCJhbGc...',
+                                    'expires_in': 3600,
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            400: {'description': 'Validation error'},
+            401: {'description': 'Invalid credentials'},
+            500: {'description': 'Server error'},
+        },
+        examples=[
+            OpenApiExample(
+                'Sign In with Password',
+                value={
+                    'email': 'user@example.com',
+                    'password': 'SecurePass123!',
+                    'device_id': 'device-uuid-123',
+                    'device_name': 'iPhone 14 Pro',
+                    'device_type': 'ios',
+                }
+            ),
+            OpenApiExample(
+                'Sign In with Passcode',
+                value={
+                    'email': 'user@example.com',
+                    'passcode': '123456',
+                    'device_id': 'device-uuid-123',
+                    'device_name': 'iPhone 14 Pro',
+                    'device_type': 'ios',
+                }
+            )
+        ]
+    )
     def post(self, request):
         serializer = SignInSerializer(data=request.data)
         if not serializer.is_valid():
@@ -296,6 +410,38 @@ class RefreshTokenView(TokenRefreshView):
     """
     permission_classes = [permissions.AllowAny]
 
+    @extend_schema(
+        tags=['V2 - Auth'],
+        summary='Refresh Access Token',
+        description='Refresh an expired access token using a valid refresh token. Updates session activity.',
+        request={
+            'application/json': {
+                'type': 'object',
+                'properties': {
+                    'refresh': {
+                        'type': 'string',
+                        'description': 'Refresh token',
+                        'example': 'eyJ0eXAiOiJKV1QiLCJhbGc...'
+                    }
+                },
+                'required': ['refresh']
+            }
+        },
+        responses={
+            200: {
+                'description': 'Token refreshed successfully',
+                'content': {
+                    'application/json': {
+                        'example': {
+                            'access': 'eyJ0eXAiOiJKV1QiLCJhbGc...',
+                            'refresh': 'eyJ0eXAiOiJKV1QiLCJhbGc...'
+                        }
+                    }
+                }
+            },
+            401: {'description': 'Invalid or expired refresh token'},
+        }
+    )
     def post(self, request, *args, **kwargs):
         response = super().post(request, *args, **kwargs)
         
@@ -320,6 +466,41 @@ class LogoutView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(
+        tags=['V2 - Auth'],
+        summary='User Logout',
+        description='Logout user and invalidate session(s). Can logout specific device or all devices.',
+        request={
+            'application/json': {
+                'type': 'object',
+                'properties': {
+                    'refresh_token': {
+                        'type': 'string',
+                        'description': 'Refresh token to invalidate (optional)',
+                    },
+                    'device_id': {
+                        'type': 'string',
+                        'description': 'Device ID to logout (optional)',
+                    }
+                }
+            }
+        },
+        responses={
+            200: {
+                'description': 'Logout successful',
+                'content': {
+                    'application/json': {
+                        'example': {
+                            'success': True,
+                            'message': 'Logged out successfully'
+                        }
+                    }
+                }
+            },
+            401: {'description': 'Unauthorized'},
+            500: {'description': 'Server error'},
+        }
+    )
     def post(self, request):
         try:
             # Get refresh token from request
@@ -366,6 +547,39 @@ class PasscodeSetupView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(
+        tags=['V2 - Auth'],
+        summary='Setup Passcode',
+        description='Set up a 6-digit passcode for quick mobile authentication. Passcode cannot be sequential or all same digits.',
+        request=PasscodeSetupSerializer,
+        responses={
+            200: {
+                'description': 'Passcode set successfully',
+                'content': {
+                    'application/json': {
+                        'example': {
+                            'success': True,
+                            'message': 'Passcode set successfully',
+                            'data': {
+                                'has_passcode': True
+                            }
+                        }
+                    }
+                }
+            },
+            400: {'description': 'Validation error'},
+            401: {'description': 'Unauthorized'},
+        },
+        examples=[
+            OpenApiExample(
+                'Setup Passcode',
+                value={
+                    'passcode': '123456',
+                    'passcode_confirmation': '123456',
+                }
+            )
+        ]
+    )
     def post(self, request):
         serializer = PasscodeSetupSerializer(data=request.data)
         if not serializer.is_valid():
@@ -396,6 +610,27 @@ class PasscodeVerifyView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(
+        tags=['V2 - Auth'],
+        summary='Verify Passcode',
+        description='Verify a 6-digit passcode for authentication.',
+        request=PasscodeVerifySerializer,
+        responses={
+            200: {
+                'description': 'Passcode verified',
+                'content': {
+                    'application/json': {
+                        'example': {
+                            'success': True,
+                            'message': 'Passcode verified'
+                        }
+                    }
+                }
+            },
+            400: {'description': 'Validation error'},
+            401: {'description': 'Invalid passcode'},
+        }
+    )
     def post(self, request):
         serializer = PasscodeVerifySerializer(data=request.data)
         if not serializer.is_valid():
@@ -423,9 +658,59 @@ class PasscodeChangeView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(
+        tags=['V2 - Auth'],
+        summary='Change Passcode',
+        description='Change existing passcode. Requires current passcode verification. Applies 24-hour transaction restriction.',
+        request=PasscodeChangeSerializer,
+        responses={
+            200: {
+                'description': 'Passcode changed successfully',
+                'content': {
+                    'application/json': {
+                        'example': {
+                            'success': True,
+                            'message': 'Passcode changed successfully. Transaction limits restricted for 24 hours.',
+                            'data': {
+                                'is_restricted': True,
+                                'restricted_until': '2025-11-13T10:30:00Z'
+                            }
+                        }
+                    }
+                }
+            },
+            400: {'description': 'Validation error'},
+            401: {'description': 'Invalid current passcode'},
+        }
+    )
     def post(self, request):
         return self._change_passcode(request)
     
+    @extend_schema(
+        tags=['V2 - Auth'],
+        summary='Change Passcode',
+        description='Change existing passcode. Requires current passcode verification. Applies 24-hour transaction restriction.',
+        request=PasscodeChangeSerializer,
+        responses={
+            200: {
+                'description': 'Passcode changed successfully',
+                'content': {
+                    'application/json': {
+                        'example': {
+                            'success': True,
+                            'message': 'Passcode changed successfully. Transaction limits restricted for 24 hours.',
+                            'data': {
+                                'is_restricted': True,
+                                'restricted_until': '2025-11-13T10:30:00Z'
+                            }
+                        }
+                    }
+                }
+            },
+            400: {'description': 'Validation error'},
+            401: {'description': 'Invalid current passcode'},
+        }
+    )
     def put(self, request):
         return self._change_passcode(request)
     
@@ -467,6 +752,30 @@ class PINSetupView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(
+        tags=['V2 - Auth'],
+        summary='Setup Transaction PIN',
+        description='Set up a 4-6 digit transaction PIN for authorizing transactions.',
+        request=PINSetupSerializer,
+        responses={
+            200: {
+                'description': 'Transaction PIN set successfully',
+                'content': {
+                    'application/json': {
+                        'example': {
+                            'success': True,
+                            'message': 'Transaction PIN set successfully',
+                            'data': {
+                                'has_pin': True
+                            }
+                        }
+                    }
+                }
+            },
+            400: {'description': 'Validation error'},
+            401: {'description': 'Unauthorized'},
+        }
+    )
     def post(self, request):
         serializer = PINSetupSerializer(data=request.data)
         if not serializer.is_valid():
@@ -497,6 +806,27 @@ class PINVerifyView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(
+        tags=['V2 - Auth'],
+        summary='Verify Transaction PIN',
+        description='Verify transaction PIN for authorizing transactions.',
+        request=PINVerifySerializer,
+        responses={
+            200: {
+                'description': 'Transaction PIN verified',
+                'content': {
+                    'application/json': {
+                        'example': {
+                            'success': True,
+                            'message': 'Transaction PIN verified'
+                        }
+                    }
+                }
+            },
+            400: {'description': 'Validation error'},
+            401: {'description': 'Invalid transaction PIN'},
+        }
+    )
     def post(self, request):
         serializer = PINVerifySerializer(data=request.data)
         if not serializer.is_valid():
@@ -524,9 +854,59 @@ class PINChangeView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(
+        tags=['V2 - Auth'],
+        summary='Change Transaction PIN',
+        description='Change existing transaction PIN. Requires current PIN verification. Applies 24-hour transaction restriction.',
+        request=PINChangeSerializer,
+        responses={
+            200: {
+                'description': 'Transaction PIN changed successfully',
+                'content': {
+                    'application/json': {
+                        'example': {
+                            'success': True,
+                            'message': 'Transaction PIN changed successfully. Transaction limits restricted for 24 hours.',
+                            'data': {
+                                'is_restricted': True,
+                                'restricted_until': '2025-11-13T10:30:00Z'
+                            }
+                        }
+                    }
+                }
+            },
+            400: {'description': 'Validation error'},
+            401: {'description': 'Invalid current PIN'},
+        }
+    )
     def post(self, request):
         return self._change_pin(request)
     
+    @extend_schema(
+        tags=['V2 - Auth'],
+        summary='Change Transaction PIN',
+        description='Change existing transaction PIN. Requires current PIN verification. Applies 24-hour transaction restriction.',
+        request=PINChangeSerializer,
+        responses={
+            200: {
+                'description': 'Transaction PIN changed successfully',
+                'content': {
+                    'application/json': {
+                        'example': {
+                            'success': True,
+                            'message': 'Transaction PIN changed successfully. Transaction limits restricted for 24 hours.',
+                            'data': {
+                                'is_restricted': True,
+                                'restricted_until': '2025-11-13T10:30:00Z'
+                            }
+                        }
+                    }
+                }
+            },
+            400: {'description': 'Validation error'},
+            401: {'description': 'Invalid current PIN'},
+        }
+    )
     def put(self, request):
         return self._change_pin(request)
     
@@ -568,6 +948,28 @@ class PINStatusView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(
+        tags=['V2 - Auth'],
+        summary='Get Transaction PIN Status',
+        description='Check if user has set up a transaction PIN.',
+        responses={
+            200: {
+                'description': 'PIN status retrieved',
+                'content': {
+                    'application/json': {
+                        'example': {
+                            'success': True,
+                            'message': 'PIN status retrieved',
+                            'data': {
+                                'has_pin': True
+                            }
+                        }
+                    }
+                }
+            },
+            401: {'description': 'Unauthorized'},
+        }
+    )
     def get(self, request):
         return success_response(
             data={

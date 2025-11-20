@@ -9,43 +9,96 @@
 
 {% block content %}
 <style>
+    /* Enhanced Support Dashboard Styles */
     .dashboard-container {
-        padding: 20px;
+        padding: 30px;
+        max-width: 1600px;
+        margin: 0 auto;
+    }
+
+    .dashboard-header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 30px;
+        border-radius: 15px;
+        margin-bottom: 30px;
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+    }
+
+    .dashboard-header h1 {
+        margin: 0 0 10px 0;
+        font-size: 32px;
+        font-weight: 700;
+    }
+
+    .dashboard-header p {
+        margin: 0;
+        font-size: 16px;
+        opacity: 0.9;
     }
 
     .metrics-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-        gap: 20px;
-        margin-bottom: 30px;
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        gap: 25px;
+        margin-bottom: 35px;
     }
 
     .metric-card {
         background: white;
-        border: 1px solid #ddd;
-        border-radius: 4px;
-        padding: 20px;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        border: none;
+        border-radius: 12px;
+        padding: 25px;
+        box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+        transition: transform 0.3s, box-shadow 0.3s;
+        position: relative;
+        overflow: hidden;
+    }
+
+    .metric-card::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 5px;
+        background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+    }
+
+    .metric-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 8px 25px rgba(0,0,0,0.15);
     }
 
     .metric-card h3 {
-        margin: 0 0 10px 0;
-        font-size: 14px;
-        color: #666;
+        margin: 0 0 15px 0;
+        font-size: 13px;
+        color: #6c757d;
         text-transform: uppercase;
-        letter-spacing: 0.5px;
+        letter-spacing: 1px;
+        font-weight: 600;
     }
 
     .metric-card .value {
-        font-size: 32px;
-        font-weight: bold;
+        font-size: 36px;
+        font-weight: 700;
         color: #333;
-        margin: 10px 0;
+        margin: 15px 0;
+        line-height: 1;
     }
 
     .metric-card .subtext {
-        font-size: 12px;
-        color: #999;
+        font-size: 13px;
+        color: #6c757d;
+        margin-top: 10px;
+    }
+
+    .metric-icon {
+        position: absolute;
+        right: 20px;
+        top: 20px;
+        font-size: 48px;
+        opacity: 0.1;
     }
 
     .metric-card.success .value { color: #28a745; }
@@ -123,7 +176,10 @@
 </style>
 
 <div class="dashboard-container">
-    <h1 style="margin-bottom: 30px;">🛠️ Customer Support Dashboard</h1>
+    <div class="dashboard-header">
+        <h1>🛠️ Customer Support Dashboard</h1>
+        <p>Real-time monitoring and management of GidiNest platform operations</p>
+    </div>
 
     <!-- Alerts -->
     {% if alerts %}
@@ -141,27 +197,31 @@
     {% endif %}
 
     <!-- User Metrics -->
-    <h2>👥 User Metrics</h2>
+    <h2 style="font-size: 22px; font-weight: 600; margin-bottom: 20px; color: #333;">👥 User Metrics</h2>
     <div class="metrics-grid">
         <div class="metric-card info">
+            <i class="fas fa-users metric-icon"></i>
             <h3>Total Users</h3>
             <div class="value">{{ total_users|default:0 }}</div>
             <div class="subtext">{{ new_users_24h }} new in 24h</div>
         </div>
 
         <div class="metric-card success">
+            <i class="fas fa-user-check metric-icon"></i>
             <h3>Verified Users</h3>
             <div class="value">{{ verified_users|default:0 }}</div>
             <div class="subtext">{{ verified_users|default:0 }}/{{ total_users|default:0 }} verified</div>
         </div>
 
         <div class="metric-card warning">
+            <i class="fas fa-user-clock metric-icon"></i>
             <h3>Unverified</h3>
             <div class="value">{{ unverified_users|default:0 }}</div>
             <div class="subtext">{{ unverified_with_bvn }} with BVN</div>
         </div>
 
         <div class="metric-card success">
+            <i class="fas fa-chart-line metric-icon"></i>
             <h3>Active Users</h3>
             <div class="value">{{ active_users|default:0 }}</div>
             <div class="subtext">Last 7 days: {{ new_users_7d }}</div>
@@ -169,27 +229,31 @@
     </div>
 
     <!-- Wallet & Transaction Metrics -->
-    <h2>💰 Wallet & Transactions</h2>
+    <h2 style="font-size: 22px; font-weight: 600; margin-bottom: 20px; color: #333;">💰 Wallet & Transactions</h2>
     <div class="metrics-grid">
         <div class="metric-card info">
+            <i class="fas fa-wallet metric-icon"></i>
             <h3>Total Wallets</h3>
             <div class="value">{{ total_wallets|default:0 }}</div>
             <div class="subtext">Active wallet accounts</div>
         </div>
 
         <div class="metric-card success">
+            <i class="fas fa-money-bill-wave metric-icon"></i>
             <h3>Total Balance</h3>
             <div class="value">₦{{ total_balance|floatformat:2 }}</div>
             <div class="subtext">Across all wallets</div>
         </div>
 
         <div class="metric-card info">
+            <i class="fas fa-exchange-alt metric-icon"></i>
             <h3>Transactions (24h)</h3>
             <div class="value">{{ transactions_24h|default:0 }}</div>
             <div class="subtext">Last 24 hours</div>
         </div>
 
         <div class="metric-card {% if pending_withdrawals > 10 %}warning{% else %}info{% endif %}">
+            <i class="fas fa-clock metric-icon"></i>
             <h3>Pending Withdrawals</h3>
             <div class="value">{{ pending_withdrawals|default:0 }}</div>
             <div class="subtext">{{ failed_withdrawals_24h }} failed in 24h</div>
@@ -197,27 +261,31 @@
     </div>
 
     <!-- Support Metrics -->
-    <h2>📞 Support Metrics</h2>
+    <h2 style="font-size: 22px; font-weight: 600; margin-bottom: 20px; color: #333;">📞 Support Metrics</h2>
     <div class="metrics-grid">
         <div class="metric-card {% if open_notes > 20 %}warning{% else %}info{% endif %}">
+            <i class="fas fa-folder-open metric-icon"></i>
             <h3>Open Notes</h3>
             <div class="value">{{ open_notes|default:0 }}</div>
             <div class="subtext">{{ notes_created_24h }} created in 24h</div>
         </div>
 
         <div class="metric-card warning">
+            <i class="fas fa-tasks metric-icon"></i>
             <h3>In Progress</h3>
             <div class="value">{{ in_progress_notes|default:0 }}</div>
             <div class="subtext">Being worked on</div>
         </div>
 
         <div class="metric-card {% if urgent_notes > 0 %}danger{% else %}success{% endif %}">
+            <i class="fas fa-exclamation-triangle metric-icon"></i>
             <h3>Urgent</h3>
             <div class="value">{{ urgent_notes|default:0 }}</div>
             <div class="subtext">{{ flagged_notes }} flagged</div>
         </div>
 
         <div class="metric-card success">
+            <i class="fas fa-check-circle metric-icon"></i>
             <h3>Resolved (24h)</h3>
             <div class="value">{{ notes_resolved_24h|default:0 }}</div>
             <div class="subtext">Last 24 hours</div>
@@ -225,21 +293,24 @@
     </div>
 
     <!-- System Health -->
-    <h2>🏥 System Health</h2>
+    <h2 style="font-size: 22px; font-weight: 600; margin-bottom: 20px; color: #333;">🏥 System Health</h2>
     <div class="metrics-grid">
         <div class="metric-card info">
+            <i class="fas fa-laptop metric-icon"></i>
             <h3>Active Sessions</h3>
             <div class="value">{{ active_sessions|default:0 }}</div>
             <div class="subtext">{{ new_sessions_24h }} new in 24h</div>
         </div>
 
         <div class="metric-card success">
+            <i class="fas fa-piggy-bank metric-icon"></i>
             <h3>Active Savings Goals</h3>
             <div class="value">{{ active_savings_goals|default:0 }}</div>
             <div class="subtext">₦{{ total_savings|floatformat:2 }} saved</div>
         </div>
 
         <div class="metric-card {% if errors_24h > 50 %}danger{% elif errors_24h > 10 %}warning{% else %}success{% endif %}">
+            <i class="fas fa-bug metric-icon"></i>
             <h3>Errors (24h)</h3>
             <div class="value">{{ errors_24h|default:0 }}</div>
             <div class="subtext">Last 24 hours</div>

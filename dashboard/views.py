@@ -7,6 +7,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
+from drf_spectacular.utils import extend_schema, OpenApiExample
 from django.core.cache import cache
 from django.core.exceptions import ObjectDoesNotExist
 from django.db.models import Sum, Q
@@ -36,6 +37,59 @@ class DashboardView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(
+        tags=['V2 - Dashboard'],
+        summary='Get Dashboard Data',
+        description='Unified dashboard endpoint that returns all user data in one optimized request. Cached for 30 seconds.',
+        responses={
+            200: {
+                'description': 'Dashboard data retrieved successfully',
+                'content': {
+                    'application/json': {
+                        'example': {
+                            'success': True,
+                            'data': {
+                                'user': {
+                                    'id': 'uuid',
+                                    'email': 'user@example.com',
+                                    'first_name': 'John',
+                                    'last_name': 'Doe',
+                                    'phone': '08012345678',
+                                    'account_tier': 'Tier 2',
+                                    'has_passcode': True,
+                                    'has_pin': True,
+                                    'is_verified': True,
+                                    'verification_method': 'bvn',
+                                    'biometric_enabled': False
+                                },
+                                'wallet': {
+                                    'balance': '50000.00',
+                                    'account_number': '1234567890',
+                                    'bank_name': 'Embedly Virtual Bank',
+                                    'bank_code': '001',
+                                    'account_name': 'John Doe',
+                                    'currency': 'NGN'
+                                },
+                                'quick_stats': {
+                                    'total_savings': '25000.00',
+                                    'active_goals': 3,
+                                    'this_month_contributions': '5000.00'
+                                },
+                                'recent_transactions': [],
+                                'savings_goals': [],
+                                'restrictions': {
+                                    'is_restricted': False,
+                                    'restricted_until': None,
+                                    'restricted_limit': None
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            401: {'description': 'Unauthorized'},
+        }
+    )
     def get(self, request):
         user = request.user
 

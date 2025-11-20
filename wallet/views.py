@@ -6,6 +6,8 @@ from rest_framework import status
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
+from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiExample
+from drf_spectacular.types import OpenApiTypes
 from django.core.exceptions import ObjectDoesNotExist
 
 from core.helpers.response import success_response, error_response
@@ -53,6 +55,37 @@ class WalletBalanceAPIView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(
+        tags=['V1 - Wallet'],
+        summary='Get Wallet Balance',
+        description='Retrieve the authenticated user\'s wallet balance, account details, and savings goals.',
+        responses={
+            200: {
+                'description': 'Wallet balance retrieved successfully',
+                'content': {
+                    'application/json': {
+                        'example': {
+                            'success': True,
+                            'data': {
+                                'wallet': {
+                                    'balance': '50000.00',
+                                    'currency': 'NGN',
+                                    'account_number': '1234567890',
+                                    'bank': 'Embedly Virtual Bank',
+                                    'bank_code': '001',
+                                    'account_name': 'John Doe'
+                                },
+                                'user_goals': [],
+                                'transaction_pin_set': True
+                            }
+                        }
+                    }
+                }
+            },
+            401: {'description': 'Unauthorized'},
+            404: {'description': 'Wallet not found - user needs to verify BVN/NIN'},
+        }
+    )
     def get(self, request, *args, **kwargs):
         try:
             # Attempt to get the user's wallet
@@ -87,6 +120,27 @@ class WalletTransactionHistoryAPIView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(
+        tags=['V1 - Wallet'],
+        summary='Get Transaction History',
+        description='Retrieve the authenticated user\'s wallet transaction history, ordered by most recent first.',
+        responses={
+            200: {
+                'description': 'Transaction history retrieved successfully',
+                'content': {
+                    'application/json': {
+                        'example': {
+                            'success': True,
+                            'data': {
+                                'transactions': []
+                            }
+                        }
+                    }
+                }
+            },
+            401: {'description': 'Unauthorized'},
+        }
+    )
     def get(self, request, *args, **kwargs):
         # Retrieve the user's wallet
         try:
@@ -124,7 +178,42 @@ class InitiateWithdrawalAPIView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
-
+    @extend_schema(
+        tags=['V1 - Wallet'],
+        summary='Initiate Withdrawal',
+        description='Initiate a withdrawal request to a bank account. Requires transaction PIN verification and account name validation.',
+        request={
+            'application/json': {
+                'type': 'object',
+                'properties': {
+                    'bank_name': {'type': 'string', 'example': 'GTBank'},
+                    'account_number': {'type': 'string', 'example': '0123456789'},
+                    'account_name': {'type': 'string', 'example': 'John Doe'},
+                    'amount': {'type': 'string', 'example': '5000.00'},
+                    'bank_code': {'type': 'string', 'example': '058'},
+                    'transaction_pin': {'type': 'string', 'example': '1234'},
+                },
+                'required': ['bank_name', 'account_number', 'account_name', 'amount', 'bank_code', 'transaction_pin']
+            }
+        },
+        responses={
+            200: {
+                'description': 'Withdrawal initiated successfully',
+                'content': {
+                    'application/json': {
+                        'example': {
+                            'status': True,
+                            'detail': 'Withdrawal request initiated successfully',
+                            'withdrawal_id': 123
+                        }
+                    }
+                }
+            },
+            400: {'description': 'Validation error or invalid PIN'},
+            401: {'description': 'Unauthorized'},
+            404: {'description': 'Wallet not found'},
+        }
+    )
     def post(self, request, *args, **kwargs):
         # Parse the input data
         bank_name = request.data.get('bank_name')
@@ -377,6 +466,41 @@ class ResolveBankAccountAPIView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(
+        tags=['V1 - Wallet'],
+        summary='Resolve Bank Account',
+        description='Resolve bank account details (account name) using account number and bank code.',
+        request={
+            'application/json': {
+                'type': 'object',
+                'properties': {
+                    'account_number': {'type': 'string', 'example': '0123456789'},
+                    'bank_code': {'type': 'string', 'example': '058'},
+                },
+                'required': ['account_number', 'bank_code']
+            }
+        },
+        responses={
+            200: {
+                'description': 'Account resolved successfully',
+                'content': {
+                    'application/json': {
+                        'example': {
+                            'status': True,
+                            'detail': 'Account resolved successfully.',
+                            'data': {
+                                'account_number': '0123456789',
+                                'account_name': 'John Doe',
+                                'bank_code': '058'
+                            }
+                        }
+                    }
+                }
+            },
+            400: {'description': 'Validation error'},
+            401: {'description': 'Unauthorized'},
+        }
+    )
     def post(self, request, *args, **kwargs):
         # Parse the input data
         account_number = request.data.get('account_number')
@@ -559,6 +683,30 @@ class GetBanksAPIView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(
+        tags=['V1 - Wallet'],
+        summary='Get Banks List',
+        description='Get list of all banks available for transfers.',
+        responses={
+            200: {
+                'description': 'Banks list retrieved successfully',
+                'content': {
+                    'application/json': {
+                        'example': {
+                            'status': True,
+                            'data': {
+                                'banks': [
+                                    {'code': '058', 'name': 'GTBank'},
+                                    {'code': '011', 'name': 'First Bank'},
+                                ]
+                            }
+                        }
+                    }
+                }
+            },
+            401: {'description': 'Unauthorized'},
+        }
+    )
     def get(self, request, *args, **kwargs):
         """
         Get list of banks from Embedly.
@@ -593,6 +741,41 @@ class CheckWithdrawalStatusAPIView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(
+        tags=['V1 - Wallet'],
+        summary='Check Withdrawal Status',
+        description='Check the status of a withdrawal request by withdrawal ID.',
+        parameters=[
+            OpenApiParameter(
+                name='withdrawal_id',
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.PATH,
+                description='Withdrawal request ID',
+                required=True,
+            ),
+        ],
+        responses={
+            200: {
+                'description': 'Withdrawal status retrieved successfully',
+                'content': {
+                    'application/json': {
+                        'example': {
+                            'status': True,
+                            'data': {
+                                'id': 123,
+                                'status': 'completed',
+                                'amount': '5000.00',
+                                'bank_name': 'GTBank',
+                                'account_number': '0123456789',
+                            }
+                        }
+                    }
+                }
+            },
+            401: {'description': 'Unauthorized'},
+            404: {'description': 'Withdrawal not found'},
+        }
+    )
     def get(self, request, withdrawal_id, *args, **kwargs):
         try:
             # Get withdrawal request

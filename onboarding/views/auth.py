@@ -2,6 +2,7 @@ from rest_framework import status, permissions
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.authtoken.models import Token
+from drf_spectacular.utils import extend_schema
 import logging
 
 from account.models.devices import UserDevices
@@ -30,6 +31,29 @@ class RegisterInitiateView(APIView):
     """
     permission_classes = [permissions.AllowAny]
 
+    @extend_schema(
+        tags=['V1 - Authentication'],
+        summary='Initiate Registration',
+        description='Start the registration process. Sends OTP via email for direct registration or creates session for OAuth flow.',
+        request=RegisterInitiateSerializer,
+        responses={
+            200: {
+                'description': 'Registration initiated successfully',
+                'content': {
+                    'application/json': {
+                        'example': {
+                            'success': True,
+                            'message': 'Registration Initialized',
+                            'data': {
+                                'session_id': 'uuid'
+                            }
+                        }
+                    }
+                }
+            },
+            400: {'description': 'Validation error or user already exists'},
+        }
+    )
     def post(self, request, *args, **kwargs):
  
         serializer = RegisterInitiateSerializer(data=request.data)
