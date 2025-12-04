@@ -18,6 +18,11 @@ from onboarding.views.auth_v2 import (
     PINChangeView,
     PINStatusView,
 )
+from onboarding.views.onboarding_v2 import (
+    OnboardingProfileAPIView,
+    UserDeviceAPIView,
+    CheckOnboardingStatusAPIView,
+)
 
 # Placeholder views for OAuth (to be implemented)
 from rest_framework.views import APIView
@@ -64,4 +69,15 @@ urlpatterns = [
     path('pin/verify', PINVerifyView.as_view(), name='v2-pin-verify'),
     path('pin/change', PINChangeView.as_view(), name='v2-pin-change'),
     path('pin/status', PINStatusView.as_view(), name='v2-pin-status'),
+
+    # ==========================================
+    # ONBOARDING PROFILE (Mobile-Only Rich Experience)
+    # ==========================================
+    path('onboarding/profile', OnboardingProfileAPIView.as_view(), name='v2-onboarding-profile'),
+    path('onboarding/status', CheckOnboardingStatusAPIView.as_view(), name='v2-onboarding-status'),
+
+    # ==========================================
+    # DEVICE MANAGEMENT
+    # ==========================================
+    path('devices', UserDeviceAPIView.as_view(), name='v2-user-devices'),
 ]

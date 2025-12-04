@@ -5,6 +5,7 @@ Simplified authentication flows for mobile applications
 
 from rest_framework import serializers
 from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.contrib.auth import authenticate
 from account.models.users import UserModel
 from account.models.sessions import UserSession
@@ -51,7 +52,11 @@ class SignUpSerializer(serializers.Serializer):
 
     def validate_password(self, value):
         """Validate password strength"""
-        validate_password(value)
+        try:
+            validate_password(value)
+        except DjangoValidationError as e:
+            # Convert Django ValidationError to DRF ValidationError
+            raise serializers.ValidationError(list(e.messages))
         return value
 
     def validate(self, data):

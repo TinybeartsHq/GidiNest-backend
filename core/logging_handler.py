@@ -35,12 +35,13 @@ class DatabaseLogHandler(logging.Handler):
                 if hasattr(request, 'user') and request.user.is_authenticated:
                     user_email = getattr(request.user, 'email', None)
 
-                # Get IP address
-                x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
-                if x_forwarded_for:
-                    ip_address = x_forwarded_for.split(',')[0]
-                else:
-                    ip_address = request.META.get('REMOTE_ADDR')
+                # Get IP address - only if META attribute exists (not a socket object)
+                if hasattr(request, 'META'):
+                    x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+                    if x_forwarded_for:
+                        ip_address = x_forwarded_for.split(',')[0]
+                    else:
+                        ip_address = request.META.get('REMOTE_ADDR')
 
             # Create log entry
             ServerLog.objects.create(

@@ -7,8 +7,6 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
-from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiExample
-from drf_spectacular.types import OpenApiTypes
 from django.core.exceptions import ObjectDoesNotExist
 from django.db.models import Sum, Q
 from django.core.paginator import Paginator, EmptyPage
@@ -41,92 +39,6 @@ class TransactionListView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
-    @extend_schema(
-        tags=['V2 - Transactions'],
-        summary='List Transactions',
-        description='Get paginated list of all transactions (wallet + savings goals) with filtering and summary statistics.',
-        parameters=[
-            OpenApiParameter(
-                name='page',
-                type=OpenApiTypes.INT,
-                location=OpenApiParameter.QUERY,
-                description='Page number (default: 1)',
-                required=False,
-            ),
-            OpenApiParameter(
-                name='page_size',
-                type=OpenApiTypes.INT,
-                location=OpenApiParameter.QUERY,
-                description='Items per page (default: 20, max: 100)',
-                required=False,
-            ),
-            OpenApiParameter(
-                name='type',
-                type=OpenApiTypes.STR,
-                location=OpenApiParameter.QUERY,
-                description='Filter by transaction type: credit, debit, contribution, withdrawal',
-                required=False,
-            ),
-            OpenApiParameter(
-                name='status',
-                type=OpenApiTypes.STR,
-                location=OpenApiParameter.QUERY,
-                description='Filter by status: pending, processing, completed, failed',
-                required=False,
-            ),
-            OpenApiParameter(
-                name='start_date',
-                type=OpenApiTypes.DATE,
-                location=OpenApiParameter.QUERY,
-                description='Start date filter (ISO format: 2025-11-01)',
-                required=False,
-            ),
-            OpenApiParameter(
-                name='end_date',
-                type=OpenApiTypes.DATE,
-                location=OpenApiParameter.QUERY,
-                description='End date filter (ISO format: 2025-11-30)',
-                required=False,
-            ),
-        ],
-        responses={
-            200: {
-                'description': 'Transactions retrieved successfully',
-                'content': {
-                    'application/json': {
-                        'example': {
-                            'success': True,
-                            'data': {
-                                'transactions': [],
-                                'pagination': {
-                                    'page': 1,
-                                    'page_size': 20,
-                                    'total': 150,
-                                    'total_pages': 8,
-                                    'has_next': True,
-                                    'has_previous': False
-                                },
-                                'summary': {
-                                    'total_deposits': '50000.00',
-                                    'total_withdrawals': '20000.00',
-                                    'total_contributions': '25000.00',
-                                    'total_goal_withdrawals': '5000.00',
-                                    'net_change': '30000.00'
-                                },
-                                'filters_applied': {
-                                    'type': None,
-                                    'status': None,
-                                    'start_date': None,
-                                    'end_date': None
-                                }
-                            }
-                        }
-                    }
-                }
-            },
-            401: {'description': 'Unauthorized'},
-        }
-    )
     def get(self, request):
         user = request.user
 
@@ -282,89 +194,6 @@ class TransactionDetailView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
-    @extend_schema(
-        tags=['V2 - Transactions'],
-        summary='Get Transaction Detail',
-        description='Get detailed information about a specific transaction including metadata and withdrawal timeline if applicable.',
-        responses={
-            200: {
-                'description': 'Transaction details retrieved successfully',
-                'content': {
-                    'application/json': {
-                        'examples': {
-                            'wallet_transaction': {
-                                'value': {
-                                    'success': True,
-                                    'data': {
-                                        'id': 'uuid',
-                                        'type': 'debit',
-                                        'amount': '5000.00',
-                                        'fee': '0.00',
-                                        'net_amount': '5000.00',
-                                        'description': 'Withdrawal to GTBank',
-                                        'status': 'completed',
-                                        'created_at': '2025-11-12T10:30:00Z',
-                                        'metadata': {
-                                            'sender_name': 'John Doe',
-                                            'sender_account': '0123456789',
-                                            'external_reference': 'WD202511121030'
-                                        },
-                                        'withdrawal_info': {
-                                            'bank_name': 'GTBank',
-                                            'bank_code': '058',
-                                            'account_number': '0123456789',
-                                            'account_name': 'Jane Doe',
-                                            'status': 'completed',
-                                            'transaction_ref': 'EMBL123456',
-                                            'error_message': None,
-                                            'timeline': []
-                                        },
-                                        'source': 'wallet'
-                                    }
-                                }
-                            },
-                            'goal_transaction': {
-                                'value': {
-                                    'success': True,
-                                    'data': {
-                                        'id': 'uuid',
-                                        'type': 'contribution',
-                                        'amount': '5000.00',
-                                        'fee': '0.00',
-                                        'net_amount': '5000.00',
-                                        'description': 'Goal: Emergency Fund',
-                                        'status': 'completed',
-                                        'created_at': '2025-11-11T15:20:00Z',
-                                        'metadata': {
-                                            'goal_id': 'uuid',
-                                            'goal_name': 'Emergency Fund',
-                                            'goal_target': '100000.00',
-                                            'goal_current_amount': '50000.00',
-                                            'goal_status': 'active'
-                                        },
-                                        'source': 'savings_goal'
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            },
-            401: {'description': 'Unauthorized'},
-            404: {
-                'description': 'Transaction not found',
-                'content': {
-                    'application/json': {
-                        'example': {
-                            'success': False,
-                            'message': 'Transaction not found',
-                            'detail': 'The requested transaction does not exist or you don\'t have permission to view it.'
-                        }
-                    }
-                }
-            },
-        }
-    )
     def get(self, request, transaction_id):
         user = request.user
 

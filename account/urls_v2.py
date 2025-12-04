@@ -8,6 +8,7 @@ from django.urls import path
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
+from account.views_v2_sessions import SessionListView, SessionDetailView, EndAllSessionsView
 
 # Placeholder view (to be replaced with actual implementation)
 class PlaceholderView(APIView):
@@ -60,7 +61,7 @@ urlpatterns = [
     # ==========================================
     # SESSIONS
     # ==========================================
-    path('sessions', PlaceholderView.as_view(), name='v2-sessions-list'),  # GET
-    path('sessions/<uuid:session_id>', PlaceholderView.as_view(), name='v2-session-detail'),  # DELETE
-    path('sessions/all', PlaceholderView.as_view(), name='v2-sessions-end-all'),  # DELETE
+    path('sessions', SessionListView.as_view(), name='v2-sessions-list'),  # GET
+    path('sessions/all', EndAllSessionsView.as_view(), name='v2-sessions-end-all'),  # DELETE
+    path('sessions/<uuid:session_id>', SessionDetailView.as_view(), name='v2-session-detail'),  # DELETE
 ]

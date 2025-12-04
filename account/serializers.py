@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from account.models.users import UserModel
+from account.models.sessions import UserSession
 
 
 class UserProfileSerializer(serializers.ModelSerializer):
@@ -91,3 +92,48 @@ class UpdateUserNINSerializer(serializers.Serializer):
                 'error': f'Missing required fields: {", ".join(missing)}. Expected fields: nin, firstname, lastname, dob'
             })
         return data
+
+
+class UserSessionSerializer(serializers.ModelSerializer):
+    """
+    Serializer for user session information.
+    Used for listing and displaying session details in the mobile app.
+    """
+    is_current = serializers.SerializerMethodField()
+    is_expired = serializers.SerializerMethodField()
+
+    class Meta:
+        model = UserSession
+        fields = [
+            'id',
+            'device_name',
+            'device_type',
+            'device_id',
+            'ip_address',
+            'location',
+            'is_active',
+            'is_current',
+            'is_expired',
+            'created_at',
+            'last_active_at',
+            'expires_at',
+        ]
+        read_only_fields = fields
+
+    def get_is_current(self, obj):
+        """
+        Determine if this session is the current one making the request.
+        Compares against the request context if available.
+        """
+        request = self.context.get('request')
+        if request and hasattr(request, 'auth') and request.auth:
+            # Check if the refresh token from the request matches this session
+            # This requires the refresh token to be available in the request context
+            current_token_hash = self.context.get('current_token_hash')
+            if current_token_hash:
+                return obj.refresh_token_hash == current_token_hash
+        return False
+
+    def get_is_expired(self, obj):
+        """Check if the session has expired"""
+        return obj.is_expired()

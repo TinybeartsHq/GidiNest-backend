@@ -25,10 +25,40 @@ class SavingsGoalSerializer(serializers.ModelSerializer):
         required=False # Allow status to be defaulted in model
     )
 
+    # Locked savings fields
+    is_locked = serializers.BooleanField(required=False, default=False)
+    lock_period_months = serializers.IntegerField(required=False, allow_null=True)
+    maturity_date = serializers.DateTimeField(required=False, allow_null=True, read_only=True)
+    early_withdrawal_penalty_percent = serializers.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        required=False,
+        default=0.00,
+        min_value=0.00,
+        max_value=100.00
+    )
+
+    # Computed fields
+    is_currently_locked = serializers.SerializerMethodField()
+    days_until_maturity = serializers.SerializerMethodField()
+
     class Meta:
         model = SavingsGoalModel
-        fields = ['id', 'name', 'amount', 'target_amount','interest_rate','accrued_interest', 'status', 'created_at', 'updated_at']
-        read_only_fields = ['id', 'interest_rate', 'created_at', 'updated_at'] # These fields are set by the system
+        fields = [
+            'id', 'name', 'amount', 'target_amount', 'interest_rate', 'accrued_interest',
+            'status', 'is_locked', 'lock_period_months', 'maturity_date',
+            'early_withdrawal_penalty_percent', 'is_currently_locked', 'days_until_maturity',
+            'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'interest_rate', 'maturity_date', 'created_at', 'updated_at']
+
+    def get_is_currently_locked(self, obj):
+        """Return whether the goal is currently locked"""
+        return obj.is_currently_locked()
+
+    def get_days_until_maturity(self, obj):
+        """Return days until maturity"""
+        return obj.days_until_maturity()
 
     def validate(self, data):
         """

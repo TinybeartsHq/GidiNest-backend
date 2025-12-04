@@ -7,15 +7,16 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
-from drf_spectacular.utils import extend_schema, OpenApiExample
 from django.core.cache import cache
 from django.core.exceptions import ObjectDoesNotExist
 from django.db.models import Sum, Q
 from decimal import Decimal
 from datetime import datetime, timedelta
+from django.utils import timezone
 
 from wallet.models import Wallet, WalletTransaction
 from savings.models import SavingsGoalModel, SavingsGoalTransaction
+from onboarding.models import OnboardingProfile
 
 
 class DashboardView(APIView):
@@ -37,59 +38,6 @@ class DashboardView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
-    @extend_schema(
-        tags=['V2 - Dashboard'],
-        summary='Get Dashboard Data',
-        description='Unified dashboard endpoint that returns all user data in one optimized request. Cached for 30 seconds.',
-        responses={
-            200: {
-                'description': 'Dashboard data retrieved successfully',
-                'content': {
-                    'application/json': {
-                        'example': {
-                            'success': True,
-                            'data': {
-                                'user': {
-                                    'id': 'uuid',
-                                    'email': 'user@example.com',
-                                    'first_name': 'John',
-                                    'last_name': 'Doe',
-                                    'phone': '08012345678',
-                                    'account_tier': 'Tier 2',
-                                    'has_passcode': True,
-                                    'has_pin': True,
-                                    'is_verified': True,
-                                    'verification_method': 'bvn',
-                                    'biometric_enabled': False
-                                },
-                                'wallet': {
-                                    'balance': '50000.00',
-                                    'account_number': '1234567890',
-                                    'bank_name': 'Embedly Virtual Bank',
-                                    'bank_code': '001',
-                                    'account_name': 'John Doe',
-                                    'currency': 'NGN'
-                                },
-                                'quick_stats': {
-                                    'total_savings': '25000.00',
-                                    'active_goals': 3,
-                                    'this_month_contributions': '5000.00'
-                                },
-                                'recent_transactions': [],
-                                'savings_goals': [],
-                                'restrictions': {
-                                    'is_restricted': False,
-                                    'restricted_until': None,
-                                    'restricted_limit': None
-                                }
-                            }
-                        }
-                    }
-                }
-            },
-            401: {'description': 'Unauthorized'},
-        }
-    )
     def get(self, request):
         user = request.user
 
@@ -104,12 +52,14 @@ class DashboardView(APIView):
 
         # Build dashboard data
         data = {
+            "dashboard_type": self._get_dashboard_type(user),
             "user": self._get_user_data(user),
             "wallet": self._get_wallet_data(user),
             "quick_stats": self._get_quick_stats(user),
             "recent_transactions": self._get_recent_transactions(user),
             "savings_goals": self._get_savings_goals(user),
-            "restrictions": self._get_restriction_status(user)
+            "restrictions": self._get_restriction_status(user),
+            "personalized_data": self._get_personalized_data(user)
         }
 
         # Cache for 30 seconds
@@ -262,3 +212,127 @@ class DashboardView(APIView):
             "restricted_until": restricted_until,
             "restricted_limit": restricted_limit
         }
+
+    def _get_dashboard_type(self, user):
+        """Determine dashboard type based on onboarding status"""
+        try:
+            onboarding = user.onboarding_profile
+            if onboarding and onboarding.onboarding_completed:
+                return "personalized"
+        except ObjectDoesNotExist:
+            pass
+        return "basic"
+
+    def _get_personalized_data(self, user):
+        """
+        Get personalized dashboard data based on onboarding profile.
+        Returns None for users without onboarding (web users).
+        """
+        try:
+            onboarding = user.onboarding_profile
+
+            if not onboarding or not onboarding.onboarding_completed:
+                return None
+
+            # Calculate journey-specific data
+            personalized_data = {
+                "journey_type": onboarding.journey_type,
+                "has_onboarding": True
+            }
+
+            # Pregnant users - countdown and trimester tracking
+            if onboarding.journey_type == 'pregnant' and onboarding.due_date:
+                days_until_due = (onboarding.due_date - timezone.now().date()).days
+                weeks_pregnant = onboarding.pregnancy_weeks or 0
+
+                # Determine trimester
+                if weeks_pregnant <= 13:
+                    trimester = 1
+                    trimester_label = "First Trimester"
+                elif weeks_pregnant <= 27:
+                    trimester = 2
+                    trimester_label = "Second Trimester"
+                else:
+                    trimester = 3
+                    trimester_label = "Third Trimester"
+
+                personalized_data.update({
+                    "due_date": onboarding.due_date.isoformat(),
+                    "days_until_due": days_until_due,
+                    "weeks_pregnant": weeks_pregnant,
+                    "trimester": trimester,
+                    "trimester_label": trimester_label,
+                    "countdown_message": self._get_countdown_message(days_until_due, weeks_pregnant)
+                })
+
+            # New mom users - baby age tracking
+            elif onboarding.journey_type == 'new_mom' and onboarding.birth_date:
+                days_since_birth = (timezone.now().date() - onboarding.birth_date).days
+                months_old = days_since_birth // 30
+
+                personalized_data.update({
+                    "birth_date": onboarding.birth_date.isoformat(),
+                    "days_since_birth": days_since_birth,
+                    "months_old": months_old,
+                    "baby_age_message": self._get_baby_age_message(months_old)
+                })
+
+            # Trying to conceive users
+            elif onboarding.journey_type == 'trying' and onboarding.conception_date:
+                days_until_target = (onboarding.conception_date - timezone.now().date()).days
+
+                personalized_data.update({
+                    "conception_date": onboarding.conception_date.isoformat(),
+                    "days_until_target": days_until_target,
+                    "trying_message": self._get_trying_message(days_until_target)
+                })
+
+            # Add planning preferences
+            personalized_data.update({
+                "hospital_plan": onboarding.hospital_plan,
+                "location": onboarding.location,
+                "baby_essentials_preference": onboarding.baby_essentials_preference
+            })
+
+            return personalized_data
+
+        except ObjectDoesNotExist:
+            # No onboarding profile (web users)
+            return None
+
+    def _get_countdown_message(self, days_until_due, weeks_pregnant):
+        """Generate personalized countdown message for pregnant users"""
+        if days_until_due <= 0:
+            return "Your due date is here! Wishing you all the best! 💕"
+        elif days_until_due <= 7:
+            return f"Your baby could arrive any day now! Just {days_until_due} days to go! 🎉"
+        elif days_until_due <= 30:
+            return f"You're in the home stretch! {days_until_due} days until your due date! 💪"
+        elif weeks_pregnant <= 13:
+            return f"You're {weeks_pregnant} weeks along in your first trimester! {days_until_due} days to go! 🌸"
+        elif weeks_pregnant <= 27:
+            return f"You're {weeks_pregnant} weeks along in your second trimester! {days_until_due} days to go! 🌺"
+        else:
+            return f"You're {weeks_pregnant} weeks along in your third trimester! {days_until_due} days to go! 🌟"
+
+    def _get_baby_age_message(self, months_old):
+        """Generate personalized message for new moms"""
+        if months_old == 0:
+            return "Congratulations on your precious newborn! 👶"
+        elif months_old == 1:
+            return "Your baby is 1 month old! Time flies! 💕"
+        elif months_old < 6:
+            return f"Your baby is {months_old} months old! They're growing so fast! 🌟"
+        elif months_old < 12:
+            return f"Your baby is {months_old} months old! Almost a year! 🎉"
+        else:
+            return f"Your little one is {months_old} months old! What a journey! 💖"
+
+    def _get_trying_message(self, days_until_target):
+        """Generate personalized message for trying to conceive users"""
+        if days_until_target <= 0:
+            return "You've reached your target date! Best wishes on your journey! 💕"
+        elif days_until_target <= 30:
+            return f"Your target date is approaching! {days_until_target} days to go! 🌸"
+        else:
+            return f"Stay positive on your journey! {days_until_target} days until your target date! 💫"

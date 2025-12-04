@@ -1,9 +1,7 @@
-from rest_framework import status, permissions
+from rest_framework import status
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.authtoken.models import Token
-from drf_spectacular.utils import extend_schema
-import logging
 
 from account.models.devices import UserDevices
 from account.serializers import UserProfileSerializer
@@ -12,17 +10,20 @@ from notification.helper.email import MailClient
 from onboarding.serializers import ActivateEmailSerializer, RegisterCompleteSerializer, RegisterInitiateSerializer, RegisterOTPSerializer, UserSerializer, LoginSerializer
 from account.models.users import UserModel
 from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework import permissions
 import random
 from django.utils import timezone
 from django.core.mail import send_mail
+from rest_framework import status
+from rest_framework.views import APIView
+from rest_framework.response import Response
 from django.contrib.auth.hashers import make_password
 from onboarding.models import PasswordResetOTP, RegisterTempData, User
 from onboarding.serializers import RequestOTPSerializer, VerifyOTPSerializer, ResetPasswordSerializer
 from django.contrib.auth import authenticate
 from django.conf import settings
+from providers.helpers.cuoral import CuoralAPI
 from django.db.models import Q
-
-logger = logging.getLogger(__name__)
 
 
 class RegisterInitiateView(APIView):
@@ -31,54 +32,24 @@ class RegisterInitiateView(APIView):
     """
     permission_classes = [permissions.AllowAny]
 
-    @extend_schema(
-        tags=['V1 - Authentication'],
-        summary='Initiate Registration',
-        description='Start the registration process. Sends OTP via email for direct registration or creates session for OAuth flow.',
-        request=RegisterInitiateSerializer,
-        responses={
-            200: {
-                'description': 'Registration initiated successfully',
-                'content': {
-                    'application/json': {
-                        'example': {
-                            'success': True,
-                            'message': 'Registration Initialized',
-                            'data': {
-                                'session_id': 'uuid'
-                            }
-                        }
-                    }
-                }
-            },
-            400: {'description': 'Validation error or user already exists'},
-        }
-    )
     def post(self, request, *args, **kwargs):
  
         serializer = RegisterInitiateSerializer(data=request.data)
         if serializer.is_valid():
-            email = serializer.validated_data.get('email')
-            phone = serializer.validated_data.get('phone')
-            first_name = serializer.validated_data.get('first_name')
-            last_name = serializer.validated_data.get('last_name')
-            auth_id = serializer.validated_data.get('auth_id')
-            oauth_provider = serializer.validated_data.get('oauth_provider') # e.g., 'google', 'apple'
-            
-            # Convert empty strings to None for optional fields
-            auth_id = auth_id if auth_id else None
-            oauth_provider = oauth_provider if oauth_provider else None
+            email = request.data.get('email')
+            phone = request.data.get('phone')
+            first_name = request.data.get('first_name')
+            last_name = request.data.get('last_name')
+            auth_id = request.data.get('auth_id')
+            oauth_provider = request.data.get('oauth_provider') # e.g., 'google', 'apple'
 
             # check if user with email or phone number already exist
-            email_exists = UserModel.objects.filter(email=email).exists()
-            phone_exists = UserModel.objects.filter(phone=phone).exists()
-            
-            if email_exists and phone_exists:
-                return error_response("User with this email and phone number already exists.", status_code=400)
-            elif email_exists:
-                return error_response("User with this email address already exists.", status_code=400)
-            elif phone_exists:
-                return error_response("User with this phone number already exists.", status_code=400)
+            user_exists = UserModel.objects.filter(
+                Q(email=email) | Q(phone=phone)
+            ).exists()
+
+            if user_exists:
+                return Response({"error": "User with this email or phone already exists."}, status=400)
             
             
             if oauth_provider == "google":
@@ -97,7 +68,7 @@ class RegisterInitiateView(APIView):
         
 
             else:
-                # Direct Email Flow: Send OTP via Email
+                # Direct Email Flow: Send OTP
                 otp = str(random.randint(100000, 999999))
                 print(otp)
              
@@ -111,30 +82,11 @@ class RegisterInitiateView(APIView):
                 ) 
                 session_id = str(temp_data.id)
 
-                # Send OTP via email using MailClient
-                client = MailClient()
-                email_result = client.send_email(
-                    to_email=email,
-                    subject="Verify Your Email - Gidinest",
-                    template_name="emails/otp.html",
-                    context={
-                        "otp": otp,
-                        "user_name": first_name or "User",
-                        "year": timezone.now().year,
-                    },
-                    to_name=first_name or "User"
-                )
-                
-                # Check if email was sent successfully
-                if email_result.get("status") != "success":
-                    # Delete the temp_data since OTP sending failed
-                    temp_data.delete()
-                    error_message = email_result.get("message", "Failed to send OTP email. Please try again later.")
-                    # Log the error for debugging
-                    logger.error(f"Failed to send registration OTP email to {email}: {error_message}")
-                    return error_response("Failed to send OTP email. Please try again later or contact support.")
+
+                cuoral_client = CuoralAPI()
+                res = cuoral_client.send_sms(phone,f"Your verification OTP is {otp}")
   
-                return success_response(data={"session_id": session_id},  message= "OTP sent to your email address")
+                return success_response(data={"session_id": session_id},  message= "OTP sent to phone number")
         return validation_error_response(serializer.errors)
 
 
@@ -151,14 +103,7 @@ class RegisterVerifyOTPView(APIView):
             otp = request.data.get('otp')
             session_id = request.data.get('session_id')
 
-            try:
-                session = RegisterTempData.objects.get(id=session_id)
-            except RegisterTempData.DoesNotExist:
-                return error_response("Invalid session ID. Please restart the registration process.")
-            
-            # Check if this is an OAuth session (shouldn't require OTP verification)
-            if session.is_oauth:
-                return error_response("OTP verification is not required for OAuth registration.")
+            session = RegisterTempData.objects.get(id=session_id)
       
             stored_otp = session.otp #retrieve otp
     
@@ -229,35 +174,31 @@ class RegisterCompleteView(APIView):
                     serializer = UserSerializer(data=user_data)
 
                     if serializer.is_valid():
-                        try:
-                            user = serializer.save()
+                        user = serializer.save()
 
-                            user.google_id = temp_data.auth_id
-                            user.save()
+                        user.google_id = temp_data.auth_id
+                        user.save()
 
-                            tokens = RefreshToken.for_user(user)
-                            token_data = {
-                                "refresh": str(tokens),
-                                "access": str(tokens.access_token)
-                            }
-                            
-                            temp_data.delete()  # Clean up
+                        tokens = RefreshToken.for_user(user)
+                        token_data = {
+                            "refresh": str(tokens),
+                            "access": str(tokens.access_token)
+                        }
+                        
+                        temp_data.delete()  # Clean up
 
-                            client = MailClient()
-                            client.send_email(
-                                    to_email=user.email,
-                                    subject="Welcome to Gidinest",
-                                    template_name="emails/welcome.html",
-                                    context={"user": user},
-                                )
+                        client = MailClient()
+                        client.send_email(
+                                to_email=user.email,
+                                subject="Welcome to Gidinest",
+                                template_name="emails/welcome.html",
+                                context={"user": user},
+                            )
 
-                            return success_response( data={
-                                'user': UserSerializer(user).data,
-                                'token': token_data
-                            },message="Registration successful")
-                        except Exception as e:
-                            logger.error(f"Error creating OAuth user in RegisterCompleteView: {str(e)}", exc_info=True)
-                            return error_response(f"Registration failed: {str(e)}", status_code=500)
+                        return success_response( data={
+                            'user': UserSerializer(user).data,
+                            'token': token_data
+                        },message="Registration successful")
                     return validation_error_response(serializer.errors)
                 else:
                     # Direct Email Flow: Complete registration using data from session
@@ -280,42 +221,38 @@ class RegisterCompleteView(APIView):
 
                     serializer = UserSerializer(data=user_data)
                     if serializer.is_valid():
-                        try:
-                            user = serializer.save()
-                            tokens = RefreshToken.for_user(user)
-                            token_data = {
-                                "refresh": str(tokens),
-                                "access": str(tokens.access_token)
-                            }
-                            
-                            if device_id:
-                                #create user device record
-                                UserDevices.objects.create(
-                                    user=user,
-                                    device_id = device_id,
-                                    device_os =  device_os,
-                                    device_info =  device_info)
-                            
-                            client = MailClient()
-                            client.send_email(
-                                    to_email=temp_data.email,
-                                    subject="Welcome to Gidinest",
-                                    template_name="emails/welcome.html",
-                                    context= {
-                                        "first_name": temp_data.first_name,
-                                        "year": timezone.now().year,
-                                    },
-                                    to_name=temp_data.first_name
-                                )
+                        user = serializer.save()
+                        tokens = RefreshToken.for_user(user)
+                        token_data = {
+                            "refresh": str(tokens),
+                            "access": str(tokens.access_token)
+                        }
+                        
+                        if device_id:
+                            #create user device record
+                            UserDevices.objects.create(
+                                user=user,
+                                device_id = device_id,
+                                device_os =  device_os,
+                                device_info =  device_info)
+                        
+                        client = MailClient()
+                        client.send_email(
+                                to_email=temp_data.email,
+                                subject="Welcome to Gidinest",
+                                template_name="emails/welcome.html",
+                                context= {
+                                    "first_name": temp_data.first_name,
+                                    "year": timezone.now().year,
+                                },
+                                to_name=temp_data.first_name
+                            )
 
 
-                            return success_response( data={
-                                'user': UserProfileSerializer(user).data,
-                                'token': token_data
-                            },message="Registration successful")
-                        except Exception as e:
-                            logger.error(f"Error creating user in RegisterCompleteView: {str(e)}", exc_info=True)
-                            return error_response(f"Registration failed: {str(e)}", status_code=500)
+                        return success_response( data={
+                            'user': UserProfileSerializer(user).data,
+                            'token': token_data
+                        },message="Registration successful")
                     return validation_error_response(serializer.errors)
 
         return validation_error_response(serializer.errors)

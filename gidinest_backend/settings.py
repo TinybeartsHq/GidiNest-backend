@@ -35,6 +35,8 @@ ALLOWED_HOSTS = [
     "www.gidinest.com",
     "localhost",
     "127.0.0.1",
+    "192.168.8.2",
+    "192.168.100.6",
     "167.99.120.170",  # Your DigitalOcean server IP
     "172.20.10.7",   # Current local network IP for mobile testing
     "172.20.10.11",  # Previous local network IP for mobile testing
@@ -251,6 +253,9 @@ REST_FRAMEWORK = {
         'rest_framework.filters.SearchFilter', # Enable search globally
         'rest_framework.filters.OrderingFilter', # Enable ordering globally
     ],
+
+    # Custom exception handler for consistent error format
+    'EXCEPTION_HANDLER': 'core.helpers.exceptions.custom_exception_handler',
 
     # drf-spectacular settings for OpenAPI schema generation
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',

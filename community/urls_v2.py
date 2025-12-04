@@ -1,48 +1,84 @@
 # community/urls_v2.py
 """
 V2 URLs for Mobile App - Community
-Enhanced community features with likes, image uploads, and improved feed
+Enhanced community features with groups, moderation, challenges, and leaderboard
 """
 
 from django.urls import path
-from rest_framework.views import APIView
-from rest_framework.response import Response
-from rest_framework import status
+from .views import (
+    # Groups
+    CommunityGroupListCreateAPIView,
+    CommunityGroupDetailAPIView,
+    GroupJoinLeaveAPIView,
 
-# Placeholder view (to be replaced with actual implementation)
-class PlaceholderView(APIView):
-    """Temporary placeholder for v2 endpoints during URL setup"""
-    def get(self, request, *args, **kwargs):
-        return Response({
-            "success": True,
-            "message": "V2 Community endpoint - Implementation pending",
-            "endpoint": request.path
-        }, status=status.HTTP_200_OK)
+    # Posts
+    CommunityPostListCreateAPIView,
+    CommunityPostDetailAPIView,
+    PostLikeToggleAPIView,
 
-    def post(self, request, *args, **kwargs):
-        return Response({
-            "success": True,
-            "message": "V2 Community endpoint - Implementation pending",
-            "endpoint": request.path,
-            "method": "POST"
-        }, status=status.HTTP_200_OK)
+    # Comments
+    CommunityCommentListCreateAPIView,
+    CommunityCommentDetailAPIView,
+
+    # Moderation
+    PostModerationListAPIView,
+    PostApproveRejectAPIView,
+    CommentModerationListAPIView,
+    CommentApproveRejectAPIView,
+
+    # Challenges
+    SavingsChallengeListCreateAPIView,
+    ChallengeJoinAPIView,
+    ChallengeUpdateProgressAPIView,
+
+    # Leaderboard & Stats
+    GroupLeaderboardAPIView,
+    CommunityStatsAPIView,
+)
 
 urlpatterns = [
     # ==========================================
+    # COMMUNITY STATS
+    # ==========================================
+    path('stats', CommunityStatsAPIView.as_view(), name='v2-community-stats'),
+
+    # ==========================================
+    # GROUPS
+    # ==========================================
+    path('groups', CommunityGroupListCreateAPIView.as_view(), name='v2-groups-list'),
+    path('groups/<int:pk>', CommunityGroupDetailAPIView.as_view(), name='v2-group-detail'),
+    path('groups/<int:pk>/join', GroupJoinLeaveAPIView.as_view(), name='v2-group-join-leave'),
+
+    # ==========================================
     # POSTS
     # ==========================================
-    path('posts', PlaceholderView.as_view(), name='v2-posts-list'),  # GET, POST - Enhanced with is_liked
-    path('posts/<int:pk>', PlaceholderView.as_view(), name='v2-post-detail'),  # GET, PUT, DELETE
-    path('posts/<int:pk>/like', PlaceholderView.as_view(), name='v2-post-like'),  # POST - Toggle like
+    path('posts', CommunityPostListCreateAPIView.as_view(), name='v2-posts-list'),
+    path('posts/<int:pk>', CommunityPostDetailAPIView.as_view(), name='v2-post-detail'),
+    path('posts/<int:pk>/like', PostLikeToggleAPIView.as_view(), name='v2-post-like'),
 
     # ==========================================
     # COMMENTS
     # ==========================================
-    path('posts/<int:post_id>/comments', PlaceholderView.as_view(), name='v2-comments-list'),  # GET, POST
-    path('comments/<int:pk>', PlaceholderView.as_view(), name='v2-comment-detail'),  # GET, PUT, DELETE
+    path('posts/<int:post_id>/comments', CommunityCommentListCreateAPIView.as_view(), name='v2-comments-list'),
+    path('comments/<int:pk>', CommunityCommentDetailAPIView.as_view(), name='v2-comment-detail'),
 
     # ==========================================
-    # IMAGE UPLOADS
+    # MODERATION (Admin/Moderator only)
     # ==========================================
-    path('uploads/image', PlaceholderView.as_view(), name='v2-upload-image'),  # POST - Upload to S3
+    path('moderation/posts', PostModerationListAPIView.as_view(), name='v2-moderation-posts'),
+    path('moderation/posts/<int:pk>/review', PostApproveRejectAPIView.as_view(), name='v2-moderation-post-review'),
+    path('moderation/comments', CommentModerationListAPIView.as_view(), name='v2-moderation-comments'),
+    path('moderation/comments/<int:pk>/review', CommentApproveRejectAPIView.as_view(), name='v2-moderation-comment-review'),
+
+    # ==========================================
+    # CHALLENGES
+    # ==========================================
+    path('challenges', SavingsChallengeListCreateAPIView.as_view(), name='v2-challenges-list'),
+    path('challenges/<int:pk>/join', ChallengeJoinAPIView.as_view(), name='v2-challenge-join'),
+    path('challenge-participations/<int:pk>/update-progress', ChallengeUpdateProgressAPIView.as_view(), name='v2-challenge-update-progress'),
+
+    # ==========================================
+    # LEADERBOARD
+    # ==========================================
+    path('groups/<int:group_id>/leaderboard', GroupLeaderboardAPIView.as_view(), name='v2-group-leaderboard'),
 ]

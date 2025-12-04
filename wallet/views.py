@@ -6,8 +6,6 @@ from rest_framework import status
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
-from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiExample
-from drf_spectacular.types import OpenApiTypes
 from django.core.exceptions import ObjectDoesNotExist
 
 from core.helpers.response import success_response, error_response
@@ -55,37 +53,6 @@ class WalletBalanceAPIView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
-    @extend_schema(
-        tags=['V1 - Wallet'],
-        summary='Get Wallet Balance',
-        description='Retrieve the authenticated user\'s wallet balance, account details, and savings goals.',
-        responses={
-            200: {
-                'description': 'Wallet balance retrieved successfully',
-                'content': {
-                    'application/json': {
-                        'example': {
-                            'success': True,
-                            'data': {
-                                'wallet': {
-                                    'balance': '50000.00',
-                                    'currency': 'NGN',
-                                    'account_number': '1234567890',
-                                    'bank': 'Embedly Virtual Bank',
-                                    'bank_code': '001',
-                                    'account_name': 'John Doe'
-                                },
-                                'user_goals': [],
-                                'transaction_pin_set': True
-                            }
-                        }
-                    }
-                }
-            },
-            401: {'description': 'Unauthorized'},
-            404: {'description': 'Wallet not found - user needs to verify BVN/NIN'},
-        }
-    )
     def get(self, request, *args, **kwargs):
         try:
             # Attempt to get the user's wallet
@@ -120,27 +87,6 @@ class WalletTransactionHistoryAPIView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
-    @extend_schema(
-        tags=['V1 - Wallet'],
-        summary='Get Transaction History',
-        description='Retrieve the authenticated user\'s wallet transaction history, ordered by most recent first.',
-        responses={
-            200: {
-                'description': 'Transaction history retrieved successfully',
-                'content': {
-                    'application/json': {
-                        'example': {
-                            'success': True,
-                            'data': {
-                                'transactions': []
-                            }
-                        }
-                    }
-                }
-            },
-            401: {'description': 'Unauthorized'},
-        }
-    )
     def get(self, request, *args, **kwargs):
         # Retrieve the user's wallet
         try:
@@ -178,42 +124,7 @@ class InitiateWithdrawalAPIView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
-    @extend_schema(
-        tags=['V1 - Wallet'],
-        summary='Initiate Withdrawal',
-        description='Initiate a withdrawal request to a bank account. Requires transaction PIN verification and account name validation.',
-        request={
-            'application/json': {
-                'type': 'object',
-                'properties': {
-                    'bank_name': {'type': 'string', 'example': 'GTBank'},
-                    'account_number': {'type': 'string', 'example': '0123456789'},
-                    'account_name': {'type': 'string', 'example': 'John Doe'},
-                    'amount': {'type': 'string', 'example': '5000.00'},
-                    'bank_code': {'type': 'string', 'example': '058'},
-                    'transaction_pin': {'type': 'string', 'example': '1234'},
-                },
-                'required': ['bank_name', 'account_number', 'account_name', 'amount', 'bank_code', 'transaction_pin']
-            }
-        },
-        responses={
-            200: {
-                'description': 'Withdrawal initiated successfully',
-                'content': {
-                    'application/json': {
-                        'example': {
-                            'status': True,
-                            'detail': 'Withdrawal request initiated successfully',
-                            'withdrawal_id': 123
-                        }
-                    }
-                }
-            },
-            400: {'description': 'Validation error or invalid PIN'},
-            401: {'description': 'Unauthorized'},
-            404: {'description': 'Wallet not found'},
-        }
-    )
+
     def post(self, request, *args, **kwargs):
         # Parse the input data
         bank_name = request.data.get('bank_name')
@@ -466,41 +377,6 @@ class ResolveBankAccountAPIView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
-    @extend_schema(
-        tags=['V1 - Wallet'],
-        summary='Resolve Bank Account',
-        description='Resolve bank account details (account name) using account number and bank code.',
-        request={
-            'application/json': {
-                'type': 'object',
-                'properties': {
-                    'account_number': {'type': 'string', 'example': '0123456789'},
-                    'bank_code': {'type': 'string', 'example': '058'},
-                },
-                'required': ['account_number', 'bank_code']
-            }
-        },
-        responses={
-            200: {
-                'description': 'Account resolved successfully',
-                'content': {
-                    'application/json': {
-                        'example': {
-                            'status': True,
-                            'detail': 'Account resolved successfully.',
-                            'data': {
-                                'account_number': '0123456789',
-                                'account_name': 'John Doe',
-                                'bank_code': '058'
-                            }
-                        }
-                    }
-                }
-            },
-            400: {'description': 'Validation error'},
-            401: {'description': 'Unauthorized'},
-        }
-    )
     def post(self, request, *args, **kwargs):
         # Parse the input data
         account_number = request.data.get('account_number')
@@ -683,30 +559,6 @@ class GetBanksAPIView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
-    @extend_schema(
-        tags=['V1 - Wallet'],
-        summary='Get Banks List',
-        description='Get list of all banks available for transfers.',
-        responses={
-            200: {
-                'description': 'Banks list retrieved successfully',
-                'content': {
-                    'application/json': {
-                        'example': {
-                            'status': True,
-                            'data': {
-                                'banks': [
-                                    {'code': '058', 'name': 'GTBank'},
-                                    {'code': '011', 'name': 'First Bank'},
-                                ]
-                            }
-                        }
-                    }
-                }
-            },
-            401: {'description': 'Unauthorized'},
-        }
-    )
     def get(self, request, *args, **kwargs):
         """
         Get list of banks from Embedly.
@@ -741,41 +593,6 @@ class CheckWithdrawalStatusAPIView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
-    @extend_schema(
-        tags=['V1 - Wallet'],
-        summary='Check Withdrawal Status',
-        description='Check the status of a withdrawal request by withdrawal ID.',
-        parameters=[
-            OpenApiParameter(
-                name='withdrawal_id',
-                type=OpenApiTypes.INT,
-                location=OpenApiParameter.PATH,
-                description='Withdrawal request ID',
-                required=True,
-            ),
-        ],
-        responses={
-            200: {
-                'description': 'Withdrawal status retrieved successfully',
-                'content': {
-                    'application/json': {
-                        'example': {
-                            'status': True,
-                            'data': {
-                                'id': 123,
-                                'status': 'completed',
-                                'amount': '5000.00',
-                                'bank_name': 'GTBank',
-                                'account_number': '0123456789',
-                            }
-                        }
-                    }
-                }
-            },
-            401: {'description': 'Unauthorized'},
-            404: {'description': 'Withdrawal not found'},
-        }
-    )
     def get(self, request, withdrawal_id, *args, **kwargs):
         try:
             # Get withdrawal request
@@ -1066,27 +883,17 @@ class PayoutWebhookView(APIView):
 
 
 class EmbedlyWebhookView(APIView):
-    """
-    Webhook handler for Embedly deposit (NIP) events.
-    Disables DRF parsers to ensure we get raw body for signature verification.
-    """
+
     permission_classes = [permissions.AllowAny]
-    parser_classes = []  # Disable DRF parsers to get raw body
 
     def post(self, request, *args, **kwargs):
+        raw_body = request.body.decode('utf-8')
+
+        if not raw_body:
+            return JsonResponse({'error': 'Missing body'}, status=400)
+
         import logging
         logger = logging.getLogger(__name__)
-        
-        # Log webhook reception
-        logger.info("Embedly webhook received")
-        
-        # Get raw body bytes for signature verification (must use bytes, not decoded string)
-        raw_body_bytes = request.body
-        raw_body = raw_body_bytes.decode('utf-8')
-
-        if not raw_body_bytes:
-            logger.error("Webhook rejected: Missing body")
-            return JsonResponse({'error': 'Missing body'}, status=400)
         
         # Embedly uses X-Auth-Signature header (per their documentation)
         # Also check alternative header names for backward compatibility
@@ -1097,296 +904,63 @@ class EmbedlyWebhookView(APIView):
             or request.headers.get('x-signature')
             or request.headers.get('x-embed-signature')
         )
-        
-        # Check if signature verification should be skipped (for testing/debugging)
-        # TEMPORARILY DISABLE SIGNATURE VERIFICATION TO TEST WEBHOOKS
-        # Set EMBEDLY_SKIP_WEBHOOK_SIGNATURE=true in .env to enable this
-        # NOTE: Currently disabled because none of 16+ signature methods match Embedly's signature
-        # TODO: Contact Embedly support for exact signature algorithm and secret
-        skip_signature_verification = getattr(settings, 'EMBEDLY_SKIP_WEBHOOK_SIGNATURE', True)  # Temporarily default to True
-        
-        # Log signature status
-        if skip_signature_verification:
-            logger.warning("Signature verification disabled - webhooks processing without verification")
-        else:
-            logger.info("Signature verification enabled")
-        
         if not provided_signature:
-            if skip_signature_verification:
-                logger.warning("Missing webhook signature header, but signature verification is disabled")
-            else:
-                logger.error("Missing webhook signature header", extra={
-                    "all_headers": dict(request.headers)
-                })
-                return JsonResponse({'error': 'Missing signature'}, status=400)
+            logger.error("Missing webhook signature header", extra={
+                "all_headers": dict(request.headers)
+            })
+            return JsonResponse({'error': 'Missing signature'}, status=400)
         
-        # Embedly uses API key for webhook signature verification (per their documentation)
-        # Format: sha512(notification payload, api_key)
-        # Try both API key and Organization ID as secrets (some providers use org ID)
-        api_key = getattr(settings, 'EMBEDLY_API_KEY_PRODUCTION', None)
-        org_id = getattr(settings, 'EMBEDLY_ORGANIZATION_ID_PRODUCTION', None)
-        raw_secrets = [
-            api_key,  # Primary - API key is used for signing
-            org_id,  # Try org ID as well
-            getattr(settings, 'EMBEDLY_WEBHOOK_SECRET', None),  # Fallback if separate secret exists
-            getattr(settings, 'EMBEDLY_WEBHOOK_KEY', None),  # Alternative name
-        ]
-        # Also try combined secrets (some providers concatenate API key + Org ID)
-        if api_key and org_id:
-            raw_secrets.append(f"{api_key}{org_id}")  # API key + Org ID
-            raw_secrets.append(f"{org_id}{api_key}")  # Org ID + API key
-        # Filter out None values and URLs (common configuration mistake)
+        # Try multiple possible secrets - Embedly might use different secrets for webhooks
         secret_candidates = [
-            s for s in raw_secrets 
-            if s and not (isinstance(s, str) and (s.startswith('http://') or s.startswith('https://')))
+            getattr(settings, 'EMBEDLY_WEBHOOK_SECRET', None),
+            getattr(settings, 'EMBEDLY_WEBHOOK_KEY', None),
+            getattr(settings, 'EMBEDLY_API_KEY_PRODUCTION', None),
+            getattr(settings, 'EMBEDLY_ORGANIZATION_ID_PRODUCTION', None),  # Some providers use org ID
         ]
-        
-        # Warn if webhook secret looks like a URL
-        webhook_secret = getattr(settings, 'EMBEDLY_WEBHOOK_SECRET', None)
-        if webhook_secret and isinstance(webhook_secret, str) and (webhook_secret.startswith('http://') or webhook_secret.startswith('https://')):
-            logger.warning(
-                f"EMBEDLY_WEBHOOK_SECRET appears to be a URL, not a secret key! "
-                f"Will try using API key instead. If Embedly doesn't provide a separate webhook secret, "
-                f"they likely use the API key for signing."
-            )
+        secret_candidates = [s for s in secret_candidates if s]
         
         if not secret_candidates:
             logger.error("No webhook secrets configured! Check EMBEDLY_WEBHOOK_SECRET or EMBEDLY_API_KEY_PRODUCTION")
             return JsonResponse({'error': 'Webhook secret not configured'}, status=500)
-        
-        # Log which secrets we're trying (for debugging)
-        logger.info(f"Attempting webhook signature verification with {len(secret_candidates)} secret(s)")
-        if secret_candidates:
-            logger.info(f"First secret preview: {secret_candidates[0][:10]}...{secret_candidates[0][-4:] if len(secret_candidates[0]) > 14 else ''} (length: {len(secret_candidates[0])})")
 
         def _matches(sig: str, secret: str) -> bool:
-            # Embedly uses sha512(notification payload, api_key) per their documentation
-            # The notation is ambiguous - could be HMAC or simple concatenation
-            # Try multiple methods to find the correct one
+            # Embedly uses sha256(secret) format per documentation
+            # Handle different signature formats:
+            # - "sha256=hexdigest" or "sha256:hexdigest"
+            # - Just the hexdigest (most common)
             normalized = sig.split('=')[-1].split(':')[-1].strip().lower()
+            body_bytes = raw_body.encode('utf-8')
             
-            try:
-                import json
-                secret_bytes = secret.encode('utf-8')
-                
-                # Try with original body (as received)
-                body_bytes = raw_body_bytes  # Use raw bytes directly
-                body_str = raw_body  # Decoded string
-                
-                # Also try with normalized JSON (sorted keys, compact format)
-                # Some webhook providers normalize JSON before signing
+            # Embedly uses SHA256 according to their docs, but try both for compatibility
+            for algo in (hashlib.sha256, hashlib.sha512):
                 try:
-                    parsed_json = json.loads(body_str)
-                    # Try multiple JSON serialization formats
-                    normalized_json = json.dumps(parsed_json, separators=(',', ':'), sort_keys=True)
-                    normalized_json_bytes = normalized_json.encode('utf-8')
-                    
-                    # Try with ensure_ascii=False (preserve unicode)
-                    normalized_json_unicode = json.dumps(parsed_json, separators=(',', ':'), sort_keys=True, ensure_ascii=False)
-                    normalized_json_unicode_bytes = normalized_json_unicode.encode('utf-8')
-                    
-                    # Try without sorting keys (preserve original order)
-                    normalized_json_no_sort = json.dumps(parsed_json, separators=(',', ':'))
-                    normalized_json_no_sort_bytes = normalized_json_no_sort.encode('utf-8')
-                except:
-                    normalized_json_bytes = body_bytes
-                    normalized_json = body_str
-                    normalized_json_unicode_bytes = body_bytes
-                    normalized_json_unicode = body_str
-                    normalized_json_no_sort_bytes = body_bytes
-                    normalized_json_no_sort = body_str
-                
-                # SHA512 Methods
-                # Method 1: HMAC-SHA512 with original body (standard webhook approach)
-                computed_hmac1 = hmac.new(
-                    secret_bytes, 
-                    body_bytes,
-                    hashlib.sha512
-                ).hexdigest().lower()
-                
-                # Method 2: HMAC-SHA512 with normalized JSON
-                computed_hmac2 = hmac.new(
-                    secret_bytes, 
-                    normalized_json_bytes,
-                    hashlib.sha512
-                ).hexdigest().lower()
-                
-                # Method 3: Simple SHA512 of payload + api_key (original)
-                computed_concat1 = hashlib.sha512(
-                    body_bytes + secret_bytes
-                ).hexdigest().lower()
-                
-                # Method 4: Simple SHA512 of payload + api_key (normalized JSON)
-                computed_concat2 = hashlib.sha512(
-                    normalized_json_bytes + secret_bytes
-                ).hexdigest().lower()
-                
-                # Method 5: Simple SHA512 of api_key + payload (original)
-                computed_concat3 = hashlib.sha512(
-                    secret_bytes + body_bytes
-                ).hexdigest().lower()
-                
-                # Method 6: Simple SHA512 of api_key + payload (normalized JSON)
-                computed_concat4 = hashlib.sha512(
-                    secret_bytes + normalized_json_bytes
-                ).hexdigest().lower()
-                
-                # Additional variations with different JSON formats
-                # Method 6b: HMAC-SHA512 with unicode-preserved JSON
-                computed_hmac_unicode = hmac.new(
-                    secret_bytes, 
-                    normalized_json_unicode_bytes,
-                    hashlib.sha512
-                ).hexdigest().lower()
-                
-                # Method 6c: HMAC-SHA512 with no-sort JSON
-                computed_hmac_no_sort = hmac.new(
-                    secret_bytes, 
-                    normalized_json_no_sort_bytes,
-                    hashlib.sha512
-                ).hexdigest().lower()
-                
-                # Method 6d: SHA512(payload+key) with unicode JSON
-                computed_concat_unicode = hashlib.sha512(
-                    normalized_json_unicode_bytes + secret_bytes
-                ).hexdigest().lower()
-                
-                # Method 6e: SHA512(key+payload) with unicode JSON
-                computed_concat_key_unicode = hashlib.sha512(
-                    secret_bytes + normalized_json_unicode_bytes
-                ).hexdigest().lower()
-                
-                # SHA256 Methods (per alternative documentation)
-                # Method 7: HMAC-SHA256 with original body
-                computed_hmac256_1 = hmac.new(
-                    secret_bytes, 
-                    body_bytes,
-                    hashlib.sha256
-                ).hexdigest().lower()
-                
-                # Method 8: HMAC-SHA256 with normalized JSON
-                computed_hmac256_2 = hmac.new(
-                    secret_bytes, 
-                    normalized_json_bytes,
-                    hashlib.sha256
-                ).hexdigest().lower()
-                
-                # Method 9: Simple SHA256 of payload + api_key (original)
-                computed_concat256_1 = hashlib.sha256(
-                    body_bytes + secret_bytes
-                ).hexdigest().lower()
-                
-                # Method 10: Simple SHA256 of payload + api_key (normalized JSON)
-                computed_concat256_2 = hashlib.sha256(
-                    normalized_json_bytes + secret_bytes
-                ).hexdigest().lower()
-                
-                # Method 11: Simple SHA256 of api_key + payload (original)
-                computed_concat256_3 = hashlib.sha256(
-                    secret_bytes + body_bytes
-                ).hexdigest().lower()
-                
-                # Method 12: Simple SHA256 of api_key + payload (normalized JSON)
-                computed_concat256_4 = hashlib.sha256(
-                    secret_bytes + normalized_json_bytes
-                ).hexdigest().lower()
-                
-                # Try signature verification (silent - only log on failure)
-                
-                # Check each method
-                methods = [
-                    (computed_hmac1, "Method 1 (HMAC-SHA512, original body)"),
-                    (computed_hmac2, "Method 2 (HMAC-SHA512, normalized JSON)"),
-                    (computed_hmac_unicode, "Method 2b (HMAC-SHA512, unicode JSON)"),
-                    (computed_hmac_no_sort, "Method 2c (HMAC-SHA512, no-sort JSON)"),
-                    (computed_concat1, "Method 3 (SHA512(payload+key), original)"),
-                    (computed_concat2, "Method 4 (SHA512(payload+key), normalized)"),
-                    (computed_concat_unicode, "Method 4b (SHA512(payload+key), unicode)"),
-                    (computed_concat3, "Method 5 (SHA512(key+payload), original)"),
-                    (computed_concat4, "Method 6 (SHA512(key+payload), normalized)"),
-                    (computed_concat_key_unicode, "Method 6b (SHA512(key+payload), unicode)"),
-                    (computed_hmac256_1, "Method 7 (HMAC-SHA256, original body)"),
-                    (computed_hmac256_2, "Method 8 (HMAC-SHA256, normalized JSON)"),
-                    (computed_concat256_1, "Method 9 (SHA256(payload+key), original)"),
-                    (computed_concat256_2, "Method 10 (SHA256(payload+key), normalized)"),
-                    (computed_concat256_3, "Method 11 (SHA256(key+payload), original)"),
-                    (computed_concat256_4, "Method 12 (SHA256(key+payload), normalized)"),
-                ]
-                
-                for computed_sig, method_name in methods:
-                    if hmac.compare_digest(computed_sig, normalized):
-                        logger.info(f"Signature verified using {method_name}")
+                    digest = hmac.new(secret.encode('utf-8'), body_bytes, algo).hexdigest().lower()
+                    if hmac.compare_digest(digest, normalized):
                         return True
-                
-                # None matched - log minimal info
-                logger.warning(f"Signature verification failed - received: {normalized[:40]}...")
-                return False
-            except Exception as e:
-                logger.error(f"Error verifying signature: {e}", exc_info=True)
-                return False
+                except Exception:
+                    continue
+            return False
 
-        # Skip verification if disabled (for testing) or if no signature provided and skipping is enabled
-        if skip_signature_verification and not provided_signature:
-            verified = True
-            logger.warning("Skipping webhook signature verification (EMBEDLY_SKIP_WEBHOOK_SIGNATURE=True)")
-        elif skip_signature_verification:
-            verified = True
-            logger.warning("Skipping webhook signature verification (EMBEDLY_SKIP_WEBHOOK_SIGNATURE=True) - signature present but not verified")
-        else:
-            # Try each secret individually
-            verified = False
-            for i, secret in enumerate(secret_candidates):
-                logger.info(f"Trying secret {i+1} (length: {len(secret) if secret else 0})")
-                logger.info(f"Secret preview: {secret[:15]}...{secret[-5:] if len(secret) > 20 else ''}")
-                if _matches(provided_signature, secret):
-                    verified = True
-                    logger.info(f"✓ Signature verified with secret {i+1}")
-                    break
-                else:
-                    logger.warning(f"✗ Secret {i+1} did not match - check logs above for details")
-            
-            # Note: Embedly uses API key directly, no combinations needed
-        
+        verified = any(_matches(provided_signature, secret) for secret in secret_candidates)
         if not verified:
-            # Enhanced logging for debugging - print detailed info
+            # Enhanced logging for debugging
             all_headers = dict(request.headers)
-            header_info = {
-                "X-Auth-Signature": request.headers.get('X-Auth-Signature') or request.headers.get('x-auth-signature') or "NOT FOUND",
-                "x-embedly-signature": request.headers.get('x-embedly-signature') or "NOT FOUND",
-                "x-signature": request.headers.get('x-signature') or "NOT FOUND",
-                "x-embed-signature": request.headers.get('x-embed-signature') or "NOT FOUND",
-            }
-            
-            # Try to compute what the signature should be for debugging
-            debug_info = []
-            if provided_signature and secret_candidates:
-                normalized_sig = provided_signature.split('=')[-1].split(':')[-1].strip().lower()
-                body_bytes = raw_body.encode('utf-8')
-                for i, secret in enumerate(secret_candidates):
-                    try:
-                        # Try SHA512 (correct algorithm per Embedly docs)
-                        expected_sha512 = hmac.new(secret.encode('utf-8'), body_bytes, hashlib.sha512).hexdigest().lower()
-                        debug_info.append(f"Secret {i+1} (SHA512): {expected_sha512[:60]}...")
-                        debug_info.append(f"  Received:    {normalized_sig[:60]}...")
-                        if expected_sha512 == normalized_sig:
-                            debug_info.append(f"  ✓ MATCH FOUND with Secret {i+1}!")
-                        else:
-                            debug_info.append(f"  ✗ No match (first 20 chars differ)")
-                    except Exception as e:
-                        debug_info.append(f"Secret {i+1} error: {str(e)}")
-            
-            # Log detailed information
-            logger.error(
-                f"Embedly deposit webhook signature mismatch - "
-                f"Signature: {provided_signature[:40] if provided_signature else 'NONE'}... | "
-                f"Length: {len(provided_signature) if provided_signature else 0} | "
-                f"Secrets checked: {len(secret_candidates)} | "
-                f"Body length: {len(raw_body)} | "
-                f"Headers: {header_info}"
+            logger.warning(
+                "Embedly deposit webhook signature mismatch",
+                extra={
+                    "headers_present": {
+                        "X-Auth-Signature": bool(request.headers.get('X-Auth-Signature') or request.headers.get('x-auth-signature')),
+                        "x-embedly-signature": bool(request.headers.get('x-embedly-signature')),
+                        "x-signature": bool(request.headers.get('x-signature')),
+                        "x-embed-signature": bool(request.headers.get('x-embed-signature')),
+                    },
+                    "sig_preview": provided_signature[:20].lower() if provided_signature else None,
+                    "sig_length": len(provided_signature) if provided_signature else 0,
+                    "all_headers": {k: v[:50] if len(v) > 50 else v for k, v in all_headers.items()},
+                    "secrets_checked": len(secret_candidates),
+                    "body_length": len(raw_body),
+                }
             )
-            
-            # Log error (minimal - no verbose debug in production)
-            
             return JsonResponse({'error': 'Invalid signature - authentication failed'}, status=403)
 
         # Parse the JSON payload
@@ -1396,17 +970,9 @@ class EmbedlyWebhookView(APIView):
             return JsonResponse({'error': 'Invalid JSON'}, status=400)
 
         # Check the event type
-        event_type = payload.get('event')
-        logger.info(f"Webhook event type: {event_type}")
-        logger.info(f"Payload keys: {list(payload.keys())}")
-        
-        if event_type == 'nip':
-            logger.info("Processing NIP event (deposit)")
-            result = self.handle_nip_event(payload)
-            logger.info("NIP event processing completed")
-            return result
+        if payload.get('event') == 'nip':
+            return self.handle_nip_event(payload)
         else:
-            logger.warning(f"Unsupported event type: {event_type}")
             return JsonResponse({'error': 'Unsupported event'}, status=400)
 
     def handle_nip_event(self, payload):
@@ -1448,33 +1014,11 @@ class EmbedlyWebhookView(APIView):
                 # Update the wallet balance (ensure Decimal)
                 try:
                     wallet.deposit(Decimal(str(amount)))
-                    logger.info(f"Credited {amount} to wallet {wallet.account_number} (user: {wallet.user.email})")
+                    logger.info(f"Successfully credited {amount} to wallet {wallet.account_number} for user {wallet.user.email}")
                 except Exception as deposit_error:
                     logger.error(f"Failed to deposit {amount} to wallet {wallet.account_number}: {str(deposit_error)}")
                     raise  # Re-raise to rollback the transaction
-
-                # Check if this is a payment link contribution
-                try:
-                    from wallet.payment_link_helpers import process_payment_link_contribution
-                    is_payment_link, payment_link = process_payment_link_contribution(
-                        reference=reference,
-                        wallet_transaction=wallet_transaction,
-                        sender_name=sender_name
-                    )
-
-                    if is_payment_link:
-                        logger.info(f"Processed payment link contribution for reference: {reference}")
-                        # Return early - payment link handler will send its own notifications
-                        return JsonResponse({
-                            'status': 'success',
-                            'message': 'Payment link contribution processed successfully',
-                            'data': payload,
-                            'timestamp': str(wallet_transaction.created_at)
-                        }, status=200)
-                except Exception as pl_error:
-                    logger.error(f"Error processing payment link contribution: {str(pl_error)}")
-                    # Continue with normal flow if payment link processing fails
-
+                
         except IntegrityError as e:
             logger.warning(f"IntegrityError for reference {reference}: {str(e)}")
             return JsonResponse({'error': 'Transaction with this reference has been processed'}, status=200)

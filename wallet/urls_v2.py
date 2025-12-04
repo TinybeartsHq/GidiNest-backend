@@ -5,9 +5,6 @@ Enhanced wallet APIs with limits enforcement and deposit initiation
 """
 
 from django.urls import path
-from rest_framework.views import APIView
-from rest_framework.response import Response
-from rest_framework import status
 from wallet.payment_link_views import (
     CreateGoalPaymentLinkAPIView,
     CreateEventPaymentLinkAPIView,
@@ -18,32 +15,19 @@ from wallet.payment_link_views import (
     UpdatePaymentLinkAPIView,
     DeletePaymentLinkAPIView,
 )
-
-# Placeholder view (to be replaced with actual implementation)
-class PlaceholderView(APIView):
-    """Temporary placeholder for v2 endpoints during URL setup"""
-    def get(self, request, *args, **kwargs):
-        return Response({
-            "success": True,
-            "message": "V2 Wallet endpoint - Implementation pending",
-            "endpoint": request.path
-        }, status=status.HTTP_200_OK)
-
-    def post(self, request, *args, **kwargs):
-        return Response({
-            "success": True,
-            "message": "V2 Wallet endpoint - Implementation pending",
-            "endpoint": request.path,
-            "method": "POST"
-        }, status=status.HTTP_200_OK)
+from wallet.views_v2 import (
+    WalletDetailAPIView,
+    WalletDepositAPIView,
+    WalletWithdrawAPIView,
+)
 
 urlpatterns = [
     # ==========================================
     # WALLET OPERATIONS
     # ==========================================
-    path('', PlaceholderView.as_view(), name='v2-wallet-detail'),  # GET
-    path('deposit', PlaceholderView.as_view(), name='v2-wallet-deposit'),  # POST
-    path('withdraw', PlaceholderView.as_view(), name='v2-wallet-withdraw'),  # POST
+    path('', WalletDetailAPIView.as_view(), name='v2-wallet-detail'),  # GET
+    path('deposit', WalletDepositAPIView.as_view(), name='v2-wallet-deposit'),  # POST
+    path('withdraw', WalletWithdrawAPIView.as_view(), name='v2-wallet-withdraw'),  # POST
 
     # ==========================================
     # PAYMENT LINKS

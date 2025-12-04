@@ -32,6 +32,14 @@ app.conf.beat_schedule = {
         # crontab(minute=0, hour=2)      # Daily at 2 AM
         # crontab(minute=0, hour='*/12') # Every 12 hours
     },
+    'unlock-matured-savings-goals-daily': {
+        'task': 'savings.tasks.unlock_matured_goals',
+        'schedule': crontab(minute=0, hour=0),  # Run daily at midnight UTC
+    },
+    'calculate-savings-interest-daily': {
+        'task': 'savings.tasks.calculate_interest_for_goals',
+        'schedule': crontab(minute=30, hour=0),  # Run daily at 12:30 AM UTC
+    },
 }
 
 # Optional: Configure timezone for scheduled tasks

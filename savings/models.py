@@ -51,6 +51,29 @@ class SavingsGoalModel(models.Model):
         default=0.0,
         help_text="Interest accrued on the goal"
     )
+
+    # Locked savings fields
+    is_locked = models.BooleanField(
+        default=False,
+        help_text="Whether withdrawals are locked until maturity date"
+    )
+    lock_period_months = models.IntegerField(
+        null=True,
+        blank=True,
+        help_text="Duration of lock period in months (e.g., 3, 6, 12)"
+    )
+    maturity_date = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Date when the locked goal matures and becomes withdrawable"
+    )
+    early_withdrawal_penalty_percent = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=0.00,
+        help_text="Penalty percentage for early withdrawal (e.g., 5.00 for 5%)"
+    )
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -61,6 +84,44 @@ class SavingsGoalModel(models.Model):
 
     def __str__(self):
         return f"{self.user.email}'s {self.name} ({self.status})"
+
+    def is_currently_locked(self):
+        """
+        Check if the goal is currently locked (before maturity date).
+        Returns True if locked and maturity date hasn't been reached.
+        """
+        if not self.is_locked:
+            return False
+
+        if self.maturity_date is None:
+            return False
+
+        from django.utils import timezone
+        return timezone.now() < self.maturity_date
+
+    def calculate_early_withdrawal_penalty(self, amount):
+        """
+        Calculate the penalty amount for early withdrawal.
+        Returns the penalty amount to be deducted.
+        """
+        if self.early_withdrawal_penalty_percent <= 0:
+            return 0
+
+        from decimal import Decimal
+        penalty = (amount * self.early_withdrawal_penalty_percent) / Decimal('100')
+        return penalty
+
+    def days_until_maturity(self):
+        """
+        Calculate days remaining until maturity.
+        Returns None if not locked or no maturity date set.
+        """
+        if not self.is_locked or self.maturity_date is None:
+            return None
+
+        from django.utils import timezone
+        delta = self.maturity_date - timezone.now()
+        return max(0, delta.days)
     
 
 
