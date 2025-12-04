@@ -9,10 +9,10 @@ from .models import (
 
 @admin.register(CommunityGroup)
 class CommunityGroupAdmin(admin.ModelAdmin):
-    list_display = ('name', 'category', 'badge', 'privacy', 'member_count', 'total_savings_display', 'is_active', 'created_at')
+    list_display = ('name', 'category', 'badge', 'privacy', 'member_count_display', 'total_savings_display', 'is_active', 'created_at')
     list_filter = ('category', 'privacy', 'badge', 'is_active', 'created_at')
     search_fields = ('name', 'description')
-    readonly_fields = ('created_at', 'updated_at', 'member_count', 'total_savings_display')
+    readonly_fields = ('created_at', 'updated_at', 'member_count_display', 'total_savings_display')
     ordering = ('-created_at',)
 
     fieldsets = (
@@ -31,8 +31,18 @@ class CommunityGroupAdmin(admin.ModelAdmin):
         }),
     )
 
+    def member_count_display(self, obj):
+        try:
+            return obj.member_count
+        except Exception:
+            return 0
+    member_count_display.short_description = 'Members'
+
     def total_savings_display(self, obj):
-        return f"₦{obj.total_savings:,.2f}"
+        try:
+            return f"₦{obj.total_savings:,.2f}"
+        except Exception:
+            return "₦0.00"
     total_savings_display.short_description = 'Total Savings'
 
 
@@ -211,10 +221,10 @@ class PostLikeAdmin(admin.ModelAdmin):
 
 @admin.register(SavingsChallenge)
 class SavingsChallengeAdmin(admin.ModelAdmin):
-    list_display = ('title', 'group_name', 'goal_amount', 'status', 'participant_count', 'days_remaining', 'start_date', 'end_date')
+    list_display = ('title', 'group_name', 'goal_amount', 'status', 'participant_count_display', 'days_remaining_display', 'start_date', 'end_date')
     list_filter = ('status', 'start_date', 'end_date')
     search_fields = ('title', 'description', 'group__name')
-    readonly_fields = ('created_at', 'updated_at', 'participant_count', 'days_remaining')
+    readonly_fields = ('created_at', 'updated_at', 'participant_count_display', 'days_remaining_display')
     ordering = ('-created_at',)
 
     fieldsets = (
@@ -228,14 +238,28 @@ class SavingsChallengeAdmin(admin.ModelAdmin):
             'fields': ('start_date', 'end_date', 'status')
         }),
         ('Management', {
-            'fields': ('created_by', 'created_at', 'updated_at', 'participant_count', 'days_remaining'),
+            'fields': ('created_by', 'created_at', 'updated_at', 'participant_count_display', 'days_remaining_display'),
             'classes': ('collapse',)
         }),
     )
 
     def group_name(self, obj):
-        return obj.group.name
+        return obj.group.name if obj.group else 'N/A'
     group_name.short_description = 'Group'
+
+    def participant_count_display(self, obj):
+        try:
+            return obj.participant_count
+        except Exception:
+            return 0
+    participant_count_display.short_description = 'Participants'
+
+    def days_remaining_display(self, obj):
+        try:
+            return obj.days_remaining
+        except Exception:
+            return 0
+    days_remaining_display.short_description = 'Days Remaining'
 
 
 @admin.register(ChallengeParticipation)
@@ -275,7 +299,7 @@ class GroupLeaderboardAdmin(admin.ModelAdmin):
     list_display = ('rank', 'user_email', 'group_name', 'total_savings', 'trend_indicator', 'updated_at')
     list_filter = ('group', 'updated_at')
     search_fields = ('user__email', 'group__name')
-    readonly_fields = ('updated_at', 'trend')
+    readonly_fields = ('updated_at', 'trend_display')
     ordering = ('group', 'rank')
 
     def user_email(self, obj):
@@ -287,7 +311,10 @@ class GroupLeaderboardAdmin(admin.ModelAdmin):
     group_name.short_description = 'Group'
 
     def trend_indicator(self, obj):
-        trend = obj.trend
+        try:
+            trend = obj.trend
+        except Exception:
+            trend = 'same'
         symbols = {
             'up': '⬆️ Up',
             'down': '⬇️ Down',
@@ -304,3 +331,17 @@ class GroupLeaderboardAdmin(admin.ModelAdmin):
             symbols.get(trend, '➡️ Same')
         )
     trend_indicator.short_description = 'Trend'
+
+    def trend_display(self, obj):
+        """Display trend in readonly field"""
+        try:
+            trend = obj.trend
+            symbols = {
+                'up': '⬆️ Up',
+                'down': '⬇️ Down',
+                'same': '➡️ Same'
+            }
+            return symbols.get(trend, '➡️ Same')
+        except Exception:
+            return '➡️ Same'
+    trend_display.short_description = 'Trend'
