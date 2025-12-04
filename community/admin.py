@@ -223,28 +223,118 @@ class PostLikeAdmin(admin.ModelAdmin):
 class SavingsChallengeAdmin(admin.ModelAdmin):
     list_display = ('title', 'group_name', 'goal_amount', 'status', 'participant_count_display', 'days_remaining_display', 'start_date', 'end_date')
     list_filter = ('status', 'start_date', 'end_date')
-    search_fields = ('title', 'description', 'group__name')
+    search_fields = ('title', 'description')
     readonly_fields = ('created_at', 'updated_at', 'participant_count_display', 'days_remaining_display')
     ordering = ('-created_at',)
 
-    fieldsets = (
-        ('Challenge Information', {
-            'fields': ('group', 'title', 'description', 'icon')
-        }),
-        ('Goals & Rewards', {
-            'fields': ('goal_amount', 'reward', 'reward_description')
-        }),
-        ('Schedule', {
-            'fields': ('start_date', 'end_date', 'status')
-        }),
-        ('Management', {
-            'fields': ('created_by', 'created_at', 'updated_at', 'participant_count_display', 'days_remaining_display'),
-            'classes': ('collapse',)
-        }),
-    )
+    def get_queryset(self, request):
+        """Override to handle missing database columns gracefully"""
+        try:
+            qs = super().get_queryset(request)
+            # Try to access group field to check if column exists
+            if qs.exists():
+                try:
+                    # This will fail if group_id column doesn't exist
+                    list(qs[:1].values_list('group_id', flat=True))
+                except Exception as e:
+                    error_str = str(e)
+                    # Column doesn't exist - return empty queryset with warning
+                    from django.contrib import messages
+                    if 'group_id' in error_str or 'Unknown column' in error_str:
+                        messages.error(
+                            request,
+                            '⚠️ Database migration required! The group_id column is missing from community_savingschallenge table. '
+                            'Please run: python manage.py migrate community'
+                        )
+                    else:
+                        messages.error(
+                            request,
+                            f'Database error: {error_str}. Please check migrations.'
+                        )
+                    return qs.none()
+            return qs
+        except Exception as e:
+            from django.contrib import messages
+            error_str = str(e)
+            if 'group_id' in error_str or 'Unknown column' in error_str:
+                messages.error(
+                    request,
+                    '⚠️ Database migration required! The group_id column is missing. '
+                    'Please run: python manage.py migrate community'
+                )
+            else:
+                messages.error(
+                    request,
+                    f'Database error: {error_str}. Please run migrations: python manage.py migrate community'
+                )
+            return self.model.objects.none()
+
+    def get_fieldsets(self, request, obj=None):
+        """Dynamically adjust fieldsets based on database schema"""
+        try:
+            # Check if group field exists in database
+            if obj is None:
+                # For new objects, try to check the model
+                from django.db import connection
+                with connection.cursor() as cursor:
+                    cursor.execute("SHOW COLUMNS FROM community_savingschallenge LIKE 'group_id'")
+                    has_group = cursor.fetchone() is not None
+            else:
+                has_group = hasattr(obj, 'group_id')
+        except Exception:
+            has_group = False
+
+        if has_group:
+            return (
+                ('Challenge Information', {
+                    'fields': ('group', 'title', 'description', 'icon')
+                }),
+                ('Goals & Rewards', {
+                    'fields': ('goal_amount', 'reward', 'reward_description')
+                }),
+                ('Schedule', {
+                    'fields': ('start_date', 'end_date', 'status')
+                }),
+                ('Management', {
+                    'fields': ('created_by', 'created_at', 'updated_at', 'participant_count_display', 'days_remaining_display'),
+                    'classes': ('collapse',)
+                }),
+            )
+        else:
+            # Group field doesn't exist - show warning
+            from django.contrib import messages
+            messages.warning(
+                request,
+                '⚠️ Database migration required! The group field is missing. Please run: python manage.py migrate community'
+            )
+            return (
+                ('⚠️ Migration Required', {
+                    'fields': (),
+                    'description': 'The database schema is out of date. Please run: python manage.py migrate community'
+                }),
+                ('Challenge Information', {
+                    'fields': ('title', 'description', 'icon')
+                }),
+                ('Goals & Rewards', {
+                    'fields': ('goal_amount', 'reward', 'reward_description')
+                }),
+                ('Schedule', {
+                    'fields': ('start_date', 'end_date', 'status')
+                }),
+                ('Management', {
+                    'fields': ('created_by', 'created_at', 'updated_at', 'participant_count_display', 'days_remaining_display'),
+                    'classes': ('collapse',)
+                }),
+            )
 
     def group_name(self, obj):
-        return obj.group.name if obj.group else 'N/A'
+        try:
+            # Check if group field exists
+            if hasattr(obj, 'group_id'):
+                return obj.group.name if obj.group else 'N/A'
+            return 'N/A (Migration Required)'
+        except Exception:
+            return 'N/A (Migration Required)'
     group_name.short_description = 'Group'
 
     def participant_count_display(self, obj):

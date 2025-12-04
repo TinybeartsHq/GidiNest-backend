@@ -8,6 +8,12 @@ from .models import Notification
 
 class NotificationAdminForm(forms.ModelForm):
     """Custom form for creating notifications"""
+    send_to_all = forms.BooleanField(
+        required=False,
+        initial=False,
+        help_text="✅ Check this to send notification to ALL active users (user field will be ignored)"
+    )
+
     class Meta:
         model = Notification
         fields = '__all__'
@@ -20,6 +26,10 @@ class NotificationAdminForm(forms.ModelForm):
         # Make action_url optional
         self.fields['action_url'].required = False
         self.fields['data'].required = False
+
+        # Make user field optional when creating broadcast notifications
+        if not self.instance.pk:  # Only for new notifications
+            self.fields['user'].required = False
 
 
 @admin.register(Notification)
@@ -34,26 +44,103 @@ class NotificationAdmin(admin.ModelAdmin):
     actions = ['mark_as_read', 'mark_as_unread', 'send_general_notification']
 
     fieldsets = (
-        ('Recipient', {
-            'fields': ('user',),
-            'description': 'Select a user to send this notification to. Leave empty when creating a template for general notifications.'
+        ('📢 Broadcast Option', {
+            'fields': ('send_to_all',),
+            'description': '✅ Check "Send to all" to broadcast this notification to ALL active users. If checked, the "User" field below will be ignored.'
         }),
-        ('Notification Content', {
+        ('👤 Recipient (Individual)', {
+            'fields': ('user',),
+            'description': 'Select a specific user to send this notification to (ignored if "Send to all" is checked).'
+        }),
+        ('📝 Notification Content', {
             'fields': ('title', 'message', 'notification_type', 'action_url')
         }),
-        ('Status', {
+        ('📊 Status', {
             'fields': ('is_read', 'read_at')
         }),
-        ('Metadata', {
+        ('🔧 Metadata', {
             'fields': ('data',),
             'classes': ('collapse',),
             'description': 'Optional JSON data for additional notification metadata.'
         }),
-        ('Timestamps', {
+        ('🕐 Timestamps', {
             'fields': ('created_at', 'updated_at'),
             'classes': ('collapse',)
         }),
     )
+
+    def get_fieldsets(self, request, obj=None):
+        """Hide send_to_all field when editing existing notification"""
+        if obj:  # Editing existing notification - hide broadcast option
+            return (
+                ('👤 Recipient', {
+                    'fields': ('user',),
+                }),
+                ('📝 Notification Content', {
+                    'fields': ('title', 'message', 'notification_type', 'action_url')
+                }),
+                ('📊 Status', {
+                    'fields': ('is_read', 'read_at')
+                }),
+                ('🔧 Metadata', {
+                    'fields': ('data',),
+                    'classes': ('collapse',),
+                }),
+                ('🕐 Timestamps', {
+                    'fields': ('created_at', 'updated_at'),
+                    'classes': ('collapse',)
+                }),
+            )
+        return super().get_fieldsets(request, obj)
+
+    def save_model(self, request, obj, form, change):
+        """Handle broadcast notifications to all users"""
+        send_to_all = form.cleaned_data.get('send_to_all', False)
+
+        if send_to_all and not change:  # Only for new notifications
+            # Import here to avoid circular dependency
+            from account.models import UserModel
+
+            # Get all active users
+            users = UserModel.objects.filter(is_active=True)
+            total_users = users.count()
+
+            if total_users == 0:
+                self.message_user(request, '❌ No active users found!', level=messages.ERROR)
+                return
+
+            # Create notification for each user
+            notifications = []
+            for user in users:
+                notifications.append(
+                    Notification(
+                        user=user,
+                        title=obj.title,
+                        message=obj.message,
+                        notification_type=obj.notification_type,
+                        data=obj.data or {},
+                        action_url=obj.action_url
+                    )
+                )
+
+            # Bulk create for efficiency
+            Notification.objects.bulk_create(notifications)
+
+            # Show success message
+            self.message_user(
+                request,
+                f"✅ Successfully broadcast notification to {total_users} users!"
+            )
+        else:
+            # Normal save for individual notification
+            if not change and not obj.user:
+                self.message_user(
+                    request,
+                    '❌ Please select a user or check "Send to all"',
+                    level=messages.ERROR
+                )
+                return
+            super().save_model(request, obj, form, change)
 
     def user_email(self, obj):
         return obj.user.email if obj.user else 'N/A'
