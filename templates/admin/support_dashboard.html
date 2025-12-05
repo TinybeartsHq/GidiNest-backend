@@ -1,410 +1,123 @@
 {% extends "admin/base_site.html" %}
 {% load static %}
 
-{% block title %}{{ title }} | {{ site_title|default:_('Django site admin') }}{% endblock %}
+{% block title %}{{ title }} | GidiNest Admin{% endblock %}
 
-{% block branding %}
-<h1 id="site-name"><a href="{% url 'admin:index' %}">{{ site_header|default:_('Django administration') }}</a></h1>
+{% block extrastyle %}
+<style>
+    .dashboard-container { padding: 20px; }
+    .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 20px;
+        margin-bottom: 30px;
+    }
+    .stat-card {
+        background: white;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        padding: 20px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+    .stat-card h3 {
+        margin: 0 0 10px 0;
+        font-size: 14px;
+        color: #666;
+        font-weight: 500;
+        text-transform: uppercase;
+    }
+    .stat-card .number {
+        font-size: 32px;
+        font-weight: 700;
+        color: #333;
+        margin: 10px 0;
+    }
+    .stat-card.primary { border-left: 4px solid #417690; }
+    .stat-card.success { border-left: 4px solid #28a745; }
+    .stat-card.warning { border-left: 4px solid #ffc107; }
+    .stat-card.danger { border-left: 4px solid #dc3545; }
+    .alert {
+        padding: 15px 20px;
+        margin-bottom: 15px;
+        border-radius: 6px;
+        border-left: 4px solid;
+    }
+    .alert-danger { background-color: #f8d7da; border-color: #dc3545; color: #721c24; }
+    .alert-warning { background-color: #fff3cd; border-color: #ffc107; color: #856404; }
+</style>
 {% endblock %}
 
 {% block content %}
-<style>
-    /* Enhanced Support Dashboard Styles */
-    .dashboard-container {
-        padding: 30px;
-        max-width: 1600px;
-        margin: 0 auto;
-    }
-
-    .dashboard-header {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
-        padding: 30px;
-        border-radius: 15px;
-        margin-bottom: 30px;
-        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
-    }
-
-    .dashboard-header h1 {
-        margin: 0 0 10px 0;
-        font-size: 32px;
-        font-weight: 700;
-    }
-
-    .dashboard-header p {
-        margin: 0;
-        font-size: 16px;
-        opacity: 0.9;
-    }
-
-    .metrics-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-        gap: 25px;
-        margin-bottom: 35px;
-    }
-
-    .metric-card {
-        background: white;
-        border: none;
-        border-radius: 12px;
-        padding: 25px;
-        box-shadow: 0 2px 12px rgba(0,0,0,0.08);
-        transition: transform 0.3s, box-shadow 0.3s;
-        position: relative;
-        overflow: hidden;
-    }
-
-    .metric-card::before {
-        content: '';
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 5px;
-        background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
-    }
-
-    .metric-card:hover {
-        transform: translateY(-5px);
-        box-shadow: 0 8px 25px rgba(0,0,0,0.15);
-    }
-
-    .metric-card h3 {
-        margin: 0 0 15px 0;
-        font-size: 13px;
-        color: #6c757d;
-        text-transform: uppercase;
-        letter-spacing: 1px;
-        font-weight: 600;
-    }
-
-    .metric-card .value {
-        font-size: 36px;
-        font-weight: 700;
-        color: #333;
-        margin: 15px 0;
-        line-height: 1;
-    }
-
-    .metric-card .subtext {
-        font-size: 13px;
-        color: #6c757d;
-        margin-top: 10px;
-    }
-
-    .metric-icon {
-        position: absolute;
-        right: 20px;
-        top: 20px;
-        font-size: 48px;
-        opacity: 0.1;
-    }
-
-    .metric-card.success .value { color: #28a745; }
-    .metric-card.warning .value { color: #ffc107; }
-    .metric-card.danger .value { color: #dc3545; }
-    .metric-card.info .value { color: #17a2b8; }
-
-    .alert-box {
-        padding: 15px;
-        margin-bottom: 20px;
-        border-left: 4px solid;
-        background: #f8f9fa;
-    }
-
-    .alert-box.danger {
-        border-left-color: #dc3545;
-        background: #f8d7da;
-    }
-
-    .alert-box.warning {
-        border-left-color: #ffc107;
-        background: #fff3cd;
-    }
-
-    .alert-box.info {
-        border-left-color: #17a2b8;
-        background: #d1ecf1;
-    }
-
-    .section {
-        background: white;
-        border: 1px solid #ddd;
-        border-radius: 4px;
-        padding: 20px;
-        margin-bottom: 20px;
-    }
-
-    .section h2 {
-        margin-top: 0;
-        font-size: 18px;
-        border-bottom: 2px solid #417690;
-        padding-bottom: 10px;
-    }
-
-    .activity-list {
-        list-style: none;
-        padding: 0;
-        margin: 0;
-    }
-
-    .activity-list li {
-        padding: 10px;
-        border-bottom: 1px solid #eee;
-    }
-
-    .activity-list li:last-child {
-        border-bottom: none;
-    }
-
-    .badge {
-        display: inline-block;
-        padding: 3px 8px;
-        font-size: 11px;
-        border-radius: 3px;
-        font-weight: bold;
-    }
-
-    .badge-urgent { background: #dc3545; color: white; }
-    .badge-high { background: #ffc107; color: #333; }
-    .badge-medium { background: #17a2b8; color: white; }
-    .badge-low { background: #6c757d; color: white; }
-    .badge-open { background: #007bff; color: white; }
-    .badge-in-progress { background: #ffc107; color: #333; }
-    .badge-resolved { background: #28a745; color: white; }
-</style>
-
 <div class="dashboard-container">
-    <div class="dashboard-header">
-        <h1>🛠️ Customer Support Dashboard</h1>
-        <p>Real-time monitoring and management of GidiNest platform operations</p>
-    </div>
+    <h1>🎯 {{ title }}</h1>
+    <p>Real-time customer support metrics and system health</p>
 
-    <!-- Alerts -->
     {% if alerts %}
-        <div style="margin-bottom: 30px;">
-            <h2>⚠️ Alerts & Notifications</h2>
-            {% for alert in alerts %}
-                <div class="alert-box {{ alert.type }}">
-                    <strong>{{ alert.message }}</strong>
-                    {% if alert.link %}
-                        <a href="{{ alert.link }}" style="margin-left: 10px;">View →</a>
-                    {% endif %}
-                </div>
-            {% endfor %}
+    <div style="margin: 20px 0;">
+        <h2>⚠️ Alerts</h2>
+        {% for alert in alerts %}
+        <div class="alert alert-{{ alert.type }}">
+            <strong>{{ alert.message }}</strong>
+            {% if alert.link %}<a href="{{ alert.link }}" style="margin-left: 15px;">View →</a>{% endif %}
         </div>
+        {% endfor %}
+    </div>
     {% endif %}
 
-    <!-- User Metrics -->
-    <h2 style="font-size: 22px; font-weight: 600; margin-bottom: 20px; color: #333;">👥 User Metrics</h2>
-    <div class="metrics-grid">
-        <div class="metric-card info">
-            <i class="fas fa-users metric-icon"></i>
+    <h2>👥 User Metrics</h2>
+    <div class="stats-grid">
+        <div class="stat-card primary">
             <h3>Total Users</h3>
-            <div class="value">{{ total_users|default:0 }}</div>
-            <div class="subtext">{{ new_users_24h }} new in 24h</div>
+            <div class="number">{{ total_users|default:0 }}</div>
         </div>
-
-        <div class="metric-card success">
-            <i class="fas fa-user-check metric-icon"></i>
-            <h3>Verified Users</h3>
-            <div class="value">{{ verified_users|default:0 }}</div>
-            <div class="subtext">{{ verified_users|default:0 }}/{{ total_users|default:0 }} verified</div>
-        </div>
-
-        <div class="metric-card warning">
-            <i class="fas fa-user-clock metric-icon"></i>
-            <h3>Unverified</h3>
-            <div class="value">{{ unverified_users|default:0 }}</div>
-            <div class="subtext">{{ unverified_with_bvn }} with BVN</div>
-        </div>
-
-        <div class="metric-card success">
-            <i class="fas fa-chart-line metric-icon"></i>
+        <div class="stat-card success">
             <h3>Active Users</h3>
-            <div class="value">{{ active_users|default:0 }}</div>
-            <div class="subtext">Last 7 days: {{ new_users_7d }}</div>
+            <div class="number">{{ active_users|default:0 }}</div>
+        </div>
+        <div class="stat-card warning">
+            <h3>Unverified</h3>
+            <div class="number">{{ unverified_users|default:0 }}</div>
         </div>
     </div>
 
-    <!-- Wallet & Transaction Metrics -->
-    <h2 style="font-size: 22px; font-weight: 600; margin-bottom: 20px; color: #333;">💰 Wallet & Transactions</h2>
-    <div class="metrics-grid">
-        <div class="metric-card info">
-            <i class="fas fa-wallet metric-icon"></i>
-            <h3>Total Wallets</h3>
-            <div class="value">{{ total_wallets|default:0 }}</div>
-            <div class="subtext">Active wallet accounts</div>
-        </div>
-
-        <div class="metric-card success">
-            <i class="fas fa-money-bill-wave metric-icon"></i>
+    <h2>💰 Wallet & Transactions</h2>
+    <div class="stats-grid">
+        <div class="stat-card primary">
             <h3>Total Balance</h3>
-            <div class="value">₦{{ total_balance|floatformat:2 }}</div>
-            <div class="subtext">Across all wallets</div>
+            <div class="number">₦{{ total_balance|floatformat:2|default:"0.00" }}</div>
         </div>
-
-        <div class="metric-card info">
-            <i class="fas fa-exchange-alt metric-icon"></i>
-            <h3>Transactions (24h)</h3>
-            <div class="value">{{ transactions_24h|default:0 }}</div>
-            <div class="subtext">Last 24 hours</div>
-        </div>
-
-        <div class="metric-card {% if pending_withdrawals > 10 %}warning{% else %}info{% endif %}">
-            <i class="fas fa-clock metric-icon"></i>
+        <div class="stat-card warning">
             <h3>Pending Withdrawals</h3>
-            <div class="value">{{ pending_withdrawals|default:0 }}</div>
-            <div class="subtext">{{ failed_withdrawals_24h }} failed in 24h</div>
+            <div class="number">{{ pending_withdrawals|default:0 }}</div>
+        </div>
+        <div class="stat-card danger">
+            <h3>Failed (24h)</h3>
+            <div class="number">{{ failed_withdrawals_24h|default:0 }}</div>
         </div>
     </div>
 
-    <!-- Support Metrics -->
-    <h2 style="font-size: 22px; font-weight: 600; margin-bottom: 20px; color: #333;">📞 Support Metrics</h2>
-    <div class="metrics-grid">
-        <div class="metric-card {% if open_notes > 20 %}warning{% else %}info{% endif %}">
-            <i class="fas fa-folder-open metric-icon"></i>
+    <h2>🎧 Support Tickets</h2>
+    <div class="stats-grid">
+        <div class="stat-card warning">
             <h3>Open Notes</h3>
-            <div class="value">{{ open_notes|default:0 }}</div>
-            <div class="subtext">{{ notes_created_24h }} created in 24h</div>
+            <div class="number">{{ open_notes|default:0 }}</div>
         </div>
-
-        <div class="metric-card warning">
-            <i class="fas fa-tasks metric-icon"></i>
-            <h3>In Progress</h3>
-            <div class="value">{{ in_progress_notes|default:0 }}</div>
-            <div class="subtext">Being worked on</div>
-        </div>
-
-        <div class="metric-card {% if urgent_notes > 0 %}danger{% else %}success{% endif %}">
-            <i class="fas fa-exclamation-triangle metric-icon"></i>
+        <div class="stat-card danger">
             <h3>Urgent</h3>
-            <div class="value">{{ urgent_notes|default:0 }}</div>
-            <div class="subtext">{{ flagged_notes }} flagged</div>
+            <div class="number">{{ urgent_notes|default:0 }}</div>
         </div>
-
-        <div class="metric-card success">
-            <i class="fas fa-check-circle metric-icon"></i>
+        <div class="stat-card success">
             <h3>Resolved (24h)</h3>
-            <div class="value">{{ notes_resolved_24h|default:0 }}</div>
-            <div class="subtext">Last 24 hours</div>
+            <div class="number">{{ notes_resolved_24h|default:0 }}</div>
         </div>
     </div>
 
-    <!-- System Health -->
-    <h2 style="font-size: 22px; font-weight: 600; margin-bottom: 20px; color: #333;">🏥 System Health</h2>
-    <div class="metrics-grid">
-        <div class="metric-card info">
-            <i class="fas fa-laptop metric-icon"></i>
-            <h3>Active Sessions</h3>
-            <div class="value">{{ active_sessions|default:0 }}</div>
-            <div class="subtext">{{ new_sessions_24h }} new in 24h</div>
-        </div>
-
-        <div class="metric-card success">
-            <i class="fas fa-piggy-bank metric-icon"></i>
-            <h3>Active Savings Goals</h3>
-            <div class="value">{{ active_savings_goals|default:0 }}</div>
-            <div class="subtext">₦{{ total_savings|floatformat:2 }} saved</div>
-        </div>
-
-        <div class="metric-card {% if errors_24h > 50 %}danger{% elif errors_24h > 10 %}warning{% else %}success{% endif %}">
-            <i class="fas fa-bug metric-icon"></i>
+    <h2>🖥️ System Health</h2>
+    <div class="stats-grid">
+        <div class="stat-card {% if errors_24h > 50 %}danger{% else %}warning{% endif %}">
             <h3>Errors (24h)</h3>
-            <div class="value">{{ errors_24h|default:0 }}</div>
-            <div class="subtext">Last 24 hours</div>
+            <div class="number">{{ errors_24h|default:0 }}</div>
         </div>
     </div>
-
-    <!-- Recent Activity -->
-    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 20px; margin-top: 30px;">
-
-        <!-- Recent Customer Notes -->
-        <div class="section">
-            <h2>📝 Recent Customer Notes</h2>
-            {% if recent_notes %}
-                <ul class="activity-list">
-                    {% for note in recent_notes %}
-                        <li>
-                            <strong>{{ note.user.email }}</strong>
-                            <span class="badge badge-{{ note.priority }}">{{ note.priority }}</span>
-                            <span class="badge badge-{{ note.status }}">{{ note.status }}</span>
-                            <br>
-                            <small>{{ note.subject }}</small>
-                            <br>
-                            <small style="color: #999;">{{ note.created_at|timesince }} ago</small>
-                            <a href="/admin/account/customernote/{{ note.id }}/change/" style="float: right;">View →</a>
-                        </li>
-                    {% endfor %}
-                </ul>
-            {% else %}
-                <p style="color: #999;">No recent customer notes</p>
-            {% endif %}
-            <a href="/admin/account/customernote/" style="display: block; margin-top: 15px; text-align: right;">View All →</a>
-        </div>
-
-        <!-- Recent Unverified Users -->
-        <div class="section">
-            <h2>⏳ Users Awaiting Verification</h2>
-            {% if recent_unverified %}
-                <ul class="activity-list">
-                    {% for user in recent_unverified %}
-                        <li>
-                            <strong>{{ user.email }}</strong>
-                            {% if user.has_bvn %}<span class="badge" style="background: #28a745; color: white;">Has BVN</span>{% endif %}
-                            <br>
-                            <small>{{ user.first_name }} {{ user.last_name }}</small>
-                            <br>
-                            <small style="color: #999;">Registered {{ user.created_at|timesince }} ago</small>
-                            <a href="/admin/account/usermodel/{{ user.id }}/change/" style="float: right;">Verify →</a>
-                        </li>
-                    {% endfor %}
-                </ul>
-            {% else %}
-                <p style="color: #999;">No users awaiting verification</p>
-            {% endif %}
-            <a href="/admin/account/usermodel/?is_verified__exact=0&has_bvn__exact=1" style="display: block; margin-top: 15px; text-align: right;">View All →</a>
-        </div>
-
-        <!-- Recent Failed Withdrawals -->
-        <div class="section">
-            <h2>❌ Recent Failed Withdrawals</h2>
-            {% if recent_failed_withdrawals %}
-                <ul class="activity-list">
-                    {% for withdrawal in recent_failed_withdrawals %}
-                        <li>
-                            <strong>{{ withdrawal.user.email }}</strong>
-                            <span class="badge badge-urgent">Failed</span>
-                            <br>
-                            <small>Amount: ₦{{ withdrawal.amount|floatformat:2 }}</small>
-                            <br>
-                            <small style="color: #999;">{{ withdrawal.created_at|timesince }} ago</small>
-                            <a href="/admin/wallet/withdrawalrequest/{{ withdrawal.id }}/change/" style="float: right;">View →</a>
-                        </li>
-                    {% endfor %}
-                </ul>
-            {% else %}
-                <p style="color: #999;">No recent failed withdrawals</p>
-            {% endif %}
-            <a href="/admin/wallet/withdrawalrequest/?status__exact=failed" style="display: block; margin-top: 15px; text-align: right;">View All →</a>
-        </div>
-
-    </div>
-
-    <!-- Quick Links -->
-    <div class="section" style="margin-top: 30px;">
-        <h2>🔗 Quick Links</h2>
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px;">
-            <a href="/admin/account/usermodel/" style="display: block; padding: 15px; background: #f8f9fa; border: 1px solid #ddd; border-radius: 4px; text-decoration: none;">👥 Manage Users</a>
-            <a href="/admin/account/customernote/" style="display: block; padding: 15px; background: #f8f9fa; border: 1px solid #ddd; border-radius: 4px; text-decoration: none;">📝 Customer Notes</a>
-            <a href="/admin/wallet/withdrawalrequest/" style="display: block; padding: 15px; background: #f8f9fa; border: 1px solid #ddd; border-radius: 4px; text-decoration: none;">💸 Withdrawals</a>
-            <a href="/admin/wallet/wallettransaction/" style="display: block; padding: 15px; background: #f8f9fa; border: 1px solid #ddd; border-radius: 4px; text-decoration: none;">💳 Transactions</a>
-            <a href="/admin/account/usersession/" style="display: block; padding: 15px; background: #f8f9fa; border: 1px solid #ddd; border-radius: 4px; text-decoration: none;">🔐 Sessions</a>
-            <a href="/admin/core/serverlog/" style="display: block; padding: 15px; background: #f8f9fa; border: 1px solid #ddd; border-radius: 4px; text-decoration: none;">📊 Server Logs</a>
-        </div>
-    </div>
-
 </div>
-
 {% endblock %}

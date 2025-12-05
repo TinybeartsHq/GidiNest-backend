@@ -26,7 +26,7 @@ class CommunityGroupAdmin(admin.ModelAdmin):
             'fields': ('created_by', 'is_active')
         }),
         ('Statistics', {
-            'fields': ('member_count', 'total_savings_display', 'created_at', 'updated_at'),
+            'fields': ('member_count_display', 'total_savings_display', 'created_at', 'updated_at'),
             'classes': ('collapse',)
         }),
     )
