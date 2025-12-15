@@ -13,6 +13,7 @@ from .views import (
     VerifyTransactionPinAPIView,
     TransactionPinStatusAPIView
 )
+from .views_v2 import PSB9WebhookView
 
 urlpatterns = [
     path('balance', WalletBalanceAPIView.as_view(), name='wallet_balance'),
@@ -36,6 +37,9 @@ urlpatterns = [
     path('embedly/webhook/secure', EmbedlyWebhookView.as_view(), name='embedly-webhook'),
 
     path('payout/webhook', PayoutWebhookView.as_view(), name='payout-webhook'),
+
+    # V2 Webhooks - 9PSB (9 Payment Service Bank)
+    path('9psb/webhook', PSB9WebhookView.as_view(), name='9psb-webhook'),
 
 ]
 

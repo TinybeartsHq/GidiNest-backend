@@ -37,6 +37,7 @@ ALLOWED_HOSTS = [
     "127.0.0.1",
     "192.168.8.2",
     "192.168.100.2",
+    "192.168.1.63",
     "167.99.120.170",  # Your DigitalOcean server IP
     "172.20.10.7",   # Current local network IP for mobile testing
     "172.20.10.11",  # Previous local network IP for mobile testing
@@ -188,6 +189,13 @@ ZEPTOMAIL_FROM_EMAIL = "noreply@gidinest.com"
 PREMBLY_API_KEY=os.getenv('PREMBLY_API_KEY', config('PREMBLY_API_KEY'))
 
 
+# 9PSB (9 Payment Service Bank) Configuration - V2 Wallet Provider
+PSB9_USERNAME = os.getenv('PSB9_USERNAME', config('PSB9_USERNAME', default=''))
+PSB9_PASSWORD = os.getenv('PSB9_PASSWORD', config('PSB9_PASSWORD', default=''))
+PSB9_CLIENT_ID = os.getenv('PSB9_CLIENT_ID', config('PSB9_CLIENT_ID', default=''))
+PSB9_CLIENT_SECRET = os.getenv('PSB9_CLIENT_SECRET', config('PSB9_CLIENT_SECRET', default=''))
+PSB9_BASE_URL = os.getenv('PSB9_BASE_URL', config('PSB9_BASE_URL', default='http://102.216.128.75:9090'))
+PSB9_MERCHANT_ID = os.getenv('PSB9_MERCHANT_ID', config('PSB9_MERCHANT_ID', default=''))
 
 
 CORS_ALLOW_ALL_ORIGINS = False

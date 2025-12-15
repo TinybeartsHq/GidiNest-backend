@@ -137,3 +137,115 @@ class UserSessionSerializer(serializers.ModelSerializer):
     def get_is_expired(self, obj):
         """Check if the session has expired"""
         return obj.is_expired()
+
+
+# ============================================
+# V2 KYC Serializers (Prembly Integration)
+# ============================================
+
+class V2BVNVerifySerializer(serializers.Serializer):
+    """
+    Serializer for V2 BVN verification (Step 1: Verify)
+    Used to validate BVN input before calling Prembly API
+    """
+    bvn = serializers.CharField(
+        required=True,
+        max_length=11,
+        min_length=11,
+        help_text="11-digit Bank Verification Number",
+        error_messages={
+            'required': 'BVN is required',
+            'min_length': 'BVN must be exactly 11 digits',
+            'max_length': 'BVN must be exactly 11 digits',
+        }
+    )
+
+    def validate_bvn(self, value):
+        """Validate BVN is exactly 11 digits"""
+        if not value.isdigit():
+            raise serializers.ValidationError("BVN must contain only digits (0-9)")
+        return value
+
+
+class V2BVNConfirmSerializer(serializers.Serializer):
+    """
+    Serializer for V2 BVN confirmation (Step 2: Confirm)
+    User confirms the BVN details returned from Prembly
+    """
+    bvn = serializers.CharField(
+        required=True,
+        max_length=11,
+        min_length=11,
+        help_text="11-digit BVN being confirmed"
+    )
+    confirmed = serializers.BooleanField(
+        required=True,
+        help_text="User confirmation that BVN details are correct"
+    )
+
+    def validate_confirmed(self, value):
+        """Ensure user confirmed the details"""
+        if not value:
+            raise serializers.ValidationError("You must confirm that the BVN details are correct")
+        return value
+
+
+class V2NINVerifySerializer(serializers.Serializer):
+    """
+    Serializer for V2 NIN verification (Step 1: Verify)
+    Used to validate NIN input before calling Prembly API
+    """
+    nin = serializers.CharField(
+        required=True,
+        max_length=11,
+        min_length=11,
+        help_text="11-digit National Identification Number",
+        error_messages={
+            'required': 'NIN is required',
+            'min_length': 'NIN must be exactly 11 digits',
+            'max_length': 'NIN must be exactly 11 digits',
+        }
+    )
+    first_name = serializers.CharField(
+        required=False,
+        max_length=200,
+        help_text="First name (optional, for matching)"
+    )
+    last_name = serializers.CharField(
+        required=False,
+        max_length=200,
+        help_text="Last name (optional, for matching)"
+    )
+    dob = serializers.CharField(
+        required=False,
+        help_text="Date of birth in format: YYYY-MM-DD (optional, for matching)"
+    )
+
+    def validate_nin(self, value):
+        """Validate NIN is exactly 11 digits"""
+        if not value.isdigit():
+            raise serializers.ValidationError("NIN must contain only digits (0-9)")
+        return value
+
+
+class V2NINConfirmSerializer(serializers.Serializer):
+    """
+    Serializer for V2 NIN confirmation (Step 2: Confirm)
+    User confirms the NIN details returned from Prembly
+    """
+    nin = serializers.CharField(
+        required=True,
+        max_length=11,
+        min_length=11,
+        help_text="11-digit NIN being confirmed"
+    )
+    confirmed = serializers.BooleanField(
+        required=True,
+        help_text="User confirmation that NIN details are correct"
+    )
+
+    def validate_confirmed(self, value):
+        """Ensure user confirmed the details"""
+        if not value:
+            raise serializers.ValidationError("You must confirm that the NIN details are correct")
+        return value

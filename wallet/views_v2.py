@@ -403,3 +403,223 @@ class WalletWithdrawAPIView(APIView):
                 message=f"Failed to process withdrawal: {str(e)}",
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+
+class PSB9WebhookView(APIView):
+    """
+    9PSB Webhook Handler - Processes deposit notifications from 9 Payment Service Bank
+
+    This endpoint receives webhook notifications when deposits are made to user wallets.
+    9PSB sends POST requests with transaction details when:
+    - A transfer is made to a user's virtual account
+    - An account upgrade is completed
+
+    Security: Webhook signature verification is required
+    """
+    permission_classes = []  # Public endpoint, secured by signature verification
+
+    @extend_schema(
+        tags=['Webhooks'],
+        summary='9PSB Webhook Handler',
+        description='Receives and processes deposit notifications from 9 Payment Service Bank',
+        exclude=True  # Hide from public API docs
+    )
+    def post(self, request, *args, **kwargs):
+        """
+        Handle incoming 9PSB webhook for deposits
+
+        Expected payload from 9PSB:
+        {
+            "event": "transfer.credit",
+            "data": {
+                "reference": "PSB9_TXN_123456",
+                "accountNumber": "0123456789",
+                "accountName": "John Doe",
+                "amount": 10000.00,
+                "narration": "Transfer from GTBank",
+                "senderName": "Jane Smith",
+                "senderAccount": "9876543210",
+                "senderBank": "GTBank",
+                "transactionDate": "2025-12-15T10:30:00Z",
+                "sessionId": "SESSION_123"
+            }
+        }
+        """
+        import logging
+        import hashlib
+        import hmac
+        from django.conf import settings
+        from django.views.decorators.csrf import csrf_exempt
+
+        logger = logging.getLogger(__name__)
+
+        # Get raw body for signature verification
+        try:
+            raw_body = request.body.decode('utf-8')
+        except Exception as e:
+            logger.error(f"9PSB webhook: Failed to decode request body: {e}")
+            return error_response(
+                message="Invalid request body",
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Verify webhook signature
+        signature_header = request.headers.get('X-9PSB-Signature') or request.headers.get('X-Webhook-Signature')
+
+        if not signature_header:
+            logger.error("9PSB webhook: Missing signature header")
+            return error_response(
+                message="Webhook signature missing",
+                status_code=status.HTTP_401_UNAUTHORIZED
+            )
+
+        # Verify signature using 9PSB client secret (used for webhook signing)
+        client_secret = getattr(settings, 'PSB9_CLIENT_SECRET', '')
+        if not client_secret:
+            logger.error("9PSB webhook: PSB9_CLIENT_SECRET not configured")
+            return error_response(
+                message="Webhook verification failed: Configuration error",
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+        # Calculate expected signature (9PSB uses HMAC-SHA256)
+        expected_signature = hmac.new(
+            client_secret.encode('utf-8'),
+            raw_body.encode('utf-8'),
+            hashlib.sha256
+        ).hexdigest()
+
+        # Compare signatures securely
+        if not hmac.compare_digest(expected_signature, signature_header.strip()):
+            logger.error(f"9PSB webhook: Invalid signature. Expected: {expected_signature[:10]}..., Got: {signature_header[:10]}...")
+            return error_response(
+                message="Invalid webhook signature",
+                status_code=status.HTTP_401_UNAUTHORIZED
+            )
+
+        logger.info("9PSB webhook: Signature verified successfully")
+
+        # Parse webhook data
+        webhook_data = request.data
+        event_type = webhook_data.get('event')
+        data = webhook_data.get('data', {})
+
+        # Only process credit/deposit events
+        if event_type != 'transfer.credit':
+            logger.info(f"9PSB webhook: Ignoring event type: {event_type}")
+            return success_response(
+                message="Event acknowledged",
+                data={"event": event_type, "status": "ignored"}
+            )
+
+        # Extract transaction details
+        reference = data.get('reference')
+        account_number = data.get('accountNumber')
+        amount = data.get('amount')
+        narration = data.get('narration', '')
+        sender_name = data.get('senderName', '')
+        sender_account = data.get('senderAccount', '')
+        transaction_date = data.get('transactionDate')
+
+        # Validate required fields
+        if not all([reference, account_number, amount]):
+            logger.error(f"9PSB webhook: Missing required fields. Data: {data}")
+            return error_response(
+                message="Missing required fields in webhook data",
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Check for duplicate transaction
+        if WalletTransaction.objects.filter(external_reference=reference).exists():
+            logger.warning(f"9PSB webhook: Duplicate transaction {reference}, skipping")
+            return success_response(
+                message="Transaction already processed",
+                data={"reference": reference, "status": "duplicate"}
+            )
+
+        # Find wallet by 9PSB account number
+        try:
+            wallet = Wallet.objects.get(psb9_account_number=account_number)
+        except Wallet.DoesNotExist:
+            logger.error(f"9PSB webhook: Wallet not found for account {account_number}")
+            return error_response(
+                message=f"Wallet not found for account number {account_number}",
+                status_code=status.HTTP_404_NOT_FOUND
+            )
+
+        # Process the deposit
+        try:
+            with transaction.atomic():
+                # Convert amount to Decimal
+                amount_decimal = Decimal(str(amount))
+
+                # Credit wallet
+                wallet.deposit(amount_decimal)
+
+                # Create transaction record
+                wallet_transaction = WalletTransaction.objects.create(
+                    wallet=wallet,
+                    transaction_type='credit',
+                    amount=amount_decimal,
+                    description=narration or f"Deposit from {sender_name or 'Bank Transfer'}",
+                    sender_name=sender_name,
+                    sender_account=sender_account,
+                    external_reference=reference
+                )
+
+                logger.info(
+                    f"9PSB webhook: Deposit processed successfully. "
+                    f"User: {wallet.user.email}, Amount: {amount_decimal}, Reference: {reference}"
+                )
+
+                # Send push notification to user
+                try:
+                    if PUSH_NOTIFICATIONS_AVAILABLE:
+                        send_push_notification_to_user(
+                            user=wallet.user,
+                            title="Deposit Received",
+                            body=f"Your wallet has been credited with ₦{amount_decimal:,.2f}",
+                            data={
+                                'type': 'wallet_credit',
+                                'amount': str(amount_decimal),
+                                'reference': reference
+                            }
+                        )
+                except Exception as e:
+                    logger.warning(f"9PSB webhook: Failed to send push notification: {e}")
+
+                # Send in-app notification
+                try:
+                    from notification.models import Notification
+                    Notification.objects.create(
+                        user=wallet.user,
+                        title="Deposit Received",
+                        message=f"Your wallet has been credited with ₦{amount_decimal:,.2f}",
+                        notification_type='wallet_credit',
+                        data={
+                            'amount': str(amount_decimal),
+                            'reference': reference,
+                            'transaction_id': str(wallet_transaction.id)
+                        }
+                    )
+                except Exception as e:
+                    logger.warning(f"9PSB webhook: Failed to create in-app notification: {e}")
+
+                return success_response(
+                    message="Deposit processed successfully",
+                    data={
+                        "reference": reference,
+                        "account_number": account_number,
+                        "amount": str(amount_decimal),
+                        "new_balance": str(wallet.balance),
+                        "transaction_id": str(wallet_transaction.id),
+                        "status": "success"
+                    }
+                )
+
+        except Exception as e:
+            logger.error(f"9PSB webhook: Error processing deposit: {str(e)}", exc_info=True)
+            return error_response(
+                message=f"Failed to process deposit: {str(e)}",
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )

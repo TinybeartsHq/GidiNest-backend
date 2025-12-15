@@ -58,6 +58,34 @@ class Wallet(models.Model):
         blank=True,
         help_text="The Embedly wallet ID associated with this wallet."
     )
+
+    # V2 Fields - 9PSB (9 Payment Service Bank) Integration
+    provider_version = models.CharField(
+        max_length=10,
+        default='v1',
+        choices=[('v1', 'V1 - Embedly'), ('v2', 'V2 - 9PSB')],
+        help_text="Which wallet provider is being used for this wallet."
+    )
+    psb9_customer_id = models.CharField(
+        max_length=255,
+        null=True,
+        blank=True,
+        help_text="9PSB customer ID (for V2 wallets)"
+    )
+    psb9_account_number = models.CharField(
+        max_length=20,
+        null=True,
+        blank=True,
+        unique=True,
+        help_text="9PSB account number (for V2 wallets)"
+    )
+    psb9_wallet_id = models.CharField(
+        max_length=255,
+        null=True,
+        blank=True,
+        help_text="9PSB wallet ID (for V2 wallets)"
+    )
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

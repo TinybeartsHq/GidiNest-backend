@@ -1,35 +1,33 @@
 # account/urls_v2_kyc.py
 """
 V2 URLs for Mobile App - KYC Verification
-Two-step BVN and NIN verification flow
+Two-step BVN and NIN verification flow with Prembly integration
 """
 
 from django.urls import path
-from rest_framework.views import APIView
-from rest_framework.response import Response
-from rest_framework import status
-
-# Placeholder view (to be replaced with actual implementation)
-class PlaceholderView(APIView):
-    """Temporary placeholder for v2 endpoints during URL setup"""
-    def post(self, request, *args, **kwargs):
-        return Response({
-            "success": True,
-            "message": "V2 KYC endpoint - Implementation pending",
-            "endpoint": request.path,
-            "method": "POST"
-        }, status=status.HTTP_200_OK)
+from account.views_v2_kyc import (
+    V2BVNVerifyView,
+    V2BVNConfirmView,
+    V2NINVerifyView,
+    V2NINConfirmView
+)
 
 urlpatterns = [
     # ==========================================
-    # BVN VERIFICATION (Two-Step)
+    # BVN VERIFICATION (Two-Step - Prembly)
     # ==========================================
-    path('bvn/verify', PlaceholderView.as_view(), name='v2-kyc-bvn-verify'),
-    path('bvn/confirm', PlaceholderView.as_view(), name='v2-kyc-bvn-confirm'),
+    # Step 1: Verify BVN with Prembly and return details for review
+    path('bvn/verify', V2BVNVerifyView.as_view(), name='v2-kyc-bvn-verify'),
+
+    # Step 2: Confirm BVN details and save to database
+    path('bvn/confirm', V2BVNConfirmView.as_view(), name='v2-kyc-bvn-confirm'),
 
     # ==========================================
-    # NIN VERIFICATION (Two-Step)
+    # NIN VERIFICATION (Two-Step - Prembly)
     # ==========================================
-    path('nin/verify', PlaceholderView.as_view(), name='v2-kyc-nin-verify'),
-    path('nin/confirm', PlaceholderView.as_view(), name='v2-kyc-nin-confirm'),
+    # Step 1: Verify NIN with Prembly and return details for review
+    path('nin/verify', V2NINVerifyView.as_view(), name='v2-kyc-nin-verify'),
+
+    # Step 2: Confirm NIN details and save to database
+    path('nin/confirm', V2NINConfirmView.as_view(), name='v2-kyc-nin-confirm'),
 ]
