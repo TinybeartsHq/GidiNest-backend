@@ -910,11 +910,12 @@ class EmbedlyWebhookView(APIView):
             })
             return JsonResponse({'error': 'Missing signature'}, status=400)
         
-        # Try multiple possible secrets - Embedly might use different secrets for webhooks
+        # Try multiple possible secrets - Embedly uses API key as webhook secret (per their docs)
+        # Prioritize API key first, then fallback to other possible secrets
         secret_candidates = [
+            getattr(settings, 'EMBEDLY_API_KEY_PRODUCTION', None),
             getattr(settings, 'EMBEDLY_WEBHOOK_SECRET', None),
             getattr(settings, 'EMBEDLY_WEBHOOK_KEY', None),
-            getattr(settings, 'EMBEDLY_API_KEY_PRODUCTION', None),
             getattr(settings, 'EMBEDLY_ORGANIZATION_ID_PRODUCTION', None),  # Some providers use org ID
         ]
         secret_candidates = [s for s in secret_candidates if s]
@@ -923,34 +924,53 @@ class EmbedlyWebhookView(APIView):
             logger.error("No webhook secrets configured! Check EMBEDLY_WEBHOOK_SECRET or EMBEDLY_API_KEY_PRODUCTION")
             return JsonResponse({'error': 'Webhook secret not configured'}, status=500)
 
-        def _matches(sig: str, secret: str) -> bool:
-            # Embedly uses sha256(secret) format per documentation
+        def _matches(sig: str, secret: str, secret_name: str = "unknown") -> tuple:
+            # Embedly uses SHA-512 with API key as secret (per their documentation)
             # Handle different signature formats:
-            # - "sha256=hexdigest" or "sha256:hexdigest"
+            # - "sha512=hexdigest" or "sha512:hexdigest"
             # - Just the hexdigest (most common)
             normalized = sig.split('=')[-1].split(':')[-1].strip().lower()
             body_bytes = raw_body.encode('utf-8')
-            
-            # Embedly uses SHA256 according to their docs, but try both for compatibility
-            for algo in (hashlib.sha256, hashlib.sha512):
+
+            # Try SHA-512 first (Embedly's documented algorithm), then SHA-256 for backward compatibility
+            for algo_name, algo in [('sha512', hashlib.sha512), ('sha256', hashlib.sha256)]:
                 try:
                     digest = hmac.new(secret.encode('utf-8'), body_bytes, algo).hexdigest().lower()
                     if hmac.compare_digest(digest, normalized):
-                        return True
+                        logger.info(f"Webhook signature verified using {algo_name.upper()} with {secret_name}")
+                        return True, algo_name, secret_name
                 except Exception:
                     continue
-            return False
+            return False, None, None
 
-        verified = any(_matches(provided_signature, secret) for secret in secret_candidates)
+        verified = False
+        matched_algo = None
+        matched_secret = None
+
+        # Prioritize API key (Embedly's documented secret for webhooks)
+        secret_names = [
+            'EMBEDLY_API_KEY_PRODUCTION',
+            'EMBEDLY_WEBHOOK_SECRET',
+            'EMBEDLY_WEBHOOK_KEY',
+            'EMBEDLY_ORGANIZATION_ID_PRODUCTION',
+        ]
+
+        for secret, secret_name in zip(secret_candidates, secret_names[:len(secret_candidates)]):
+            result, algo, sec_name = _matches(provided_signature, secret, secret_name)
+            if result:
+                verified = True
+                matched_algo = algo
+                matched_secret = sec_name
+                break
         if not verified:
             # Enhanced logging for debugging
             all_headers = dict(request.headers)
 
             # Create diagnostic info about which secrets were tried
             secret_diagnostics = []
-            for i, secret in enumerate(secret_candidates):
+            for i, (secret, secret_name) in enumerate(zip(secret_candidates, secret_names[:len(secret_candidates)])):
                 secret_preview = f"{secret[:4]}...{secret[-4:]}" if len(secret) > 8 else "***"
-                secret_diagnostics.append(f"Secret {i+1}: {secret_preview} (len={len(secret)})")
+                secret_diagnostics.append(f"{secret_name}: {secret_preview} (len={len(secret)}) - tried SHA512 and SHA256")
 
             logger.warning(
                 "Embedly deposit webhook signature mismatch",
