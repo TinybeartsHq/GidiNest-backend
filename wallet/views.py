@@ -945,6 +945,13 @@ class EmbedlyWebhookView(APIView):
         if not verified:
             # Enhanced logging for debugging
             all_headers = dict(request.headers)
+
+            # Create diagnostic info about which secrets were tried
+            secret_diagnostics = []
+            for i, secret in enumerate(secret_candidates):
+                secret_preview = f"{secret[:4]}...{secret[-4:]}" if len(secret) > 8 else "***"
+                secret_diagnostics.append(f"Secret {i+1}: {secret_preview} (len={len(secret)})")
+
             logger.warning(
                 "Embedly deposit webhook signature mismatch",
                 extra={
@@ -954,11 +961,20 @@ class EmbedlyWebhookView(APIView):
                         "x-signature": bool(request.headers.get('x-signature')),
                         "x-embed-signature": bool(request.headers.get('x-embed-signature')),
                     },
+                    "signature_header_used": (
+                        'X-Auth-Signature' if request.headers.get('X-Auth-Signature') or request.headers.get('x-auth-signature')
+                        else 'x-embedly-signature' if request.headers.get('x-embedly-signature')
+                        else 'x-signature' if request.headers.get('x-signature')
+                        else 'x-embed-signature' if request.headers.get('x-embed-signature')
+                        else 'unknown'
+                    ),
                     "sig_preview": provided_signature[:20].lower() if provided_signature else None,
                     "sig_length": len(provided_signature) if provided_signature else 0,
                     "all_headers": {k: v[:50] if len(v) > 50 else v for k, v in all_headers.items()},
-                    "secrets_checked": len(secret_candidates),
+                    "secrets_tried": secret_diagnostics,
+                    "secrets_checked_count": len(secret_candidates),
                     "body_length": len(raw_body),
+                    "body_preview": raw_body[:100] if raw_body else None,
                 }
             )
             return JsonResponse({'error': 'Invalid signature - authentication failed'}, status=403)
