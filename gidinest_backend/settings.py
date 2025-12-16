@@ -187,6 +187,7 @@ ZEPTOMAIL_FROM_EMAIL = "noreply@gidinest.com"
 
 
 PREMBLY_API_KEY=os.getenv('PREMBLY_API_KEY', config('PREMBLY_API_KEY'))
+PREMBLY_APP_ID=os.getenv('PREMBLY_APP_ID', config('PREMBLY_APP_ID', default=''))
 
 
 # 9PSB (9 Payment Service Bank) Configuration - V2 Wallet Provider

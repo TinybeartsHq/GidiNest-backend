@@ -114,8 +114,13 @@ class PSB9Client:
 
             data = response.json()
 
-            # 9PSB returns token in response.data.token
-            if data.get('status') == 'success' and data.get('data', {}).get('token'):
+            # 9PSB returns token as 'accessToken' (not nested in 'data')
+            if data.get('message') == 'successful' and data.get('accessToken'):
+                token = data['accessToken']
+                logger.info("9PSB authentication successful")
+                return token
+            # Fallback: try old format (data.token) for compatibility
+            elif data.get('status') == 'success' and data.get('data', {}).get('token'):
                 token = data['data']['token']
                 logger.info("9PSB authentication successful")
                 return token
@@ -141,12 +146,14 @@ class PSB9Client:
                 Required fields:
                 - firstName (str)
                 - lastName (str)
-                - phoneNumber (str)
+                - otherNames (str): First name + middle name (9PSB shows lastName + otherNames in account name)
+                - phoneNo (str): Phone number (not phoneNumber!)
                 - email (str)
                 - bvn (str): 11-digit BVN
-                - gender (str): "M" or "F"
-                - dateOfBirth (str): Format "YYYY-MM-DD"
+                - gender (int): 1 for Male, 2 for Female
+                - dateOfBirth (str): Format "dd/mm/yyyy" e.g. "21/09/1993" (NOT YYYY-MM-DD!)
                 - address (str)
+                - transactionTrackingRef (str): Unique transaction reference ID
 
         Returns:
             dict: API response with account details
@@ -176,22 +183,32 @@ class PSB9Client:
 
             data = response.json()
 
-            if data.get('status') == 'success':
-                logger.info(f"9PSB wallet opened successfully: {data.get('data', {}).get('accountNumber')}")
-                return {"status": "success", "data": data.get('data')}
+            # Check status case-insensitively (9PSB returns 'SUCCESS' not 'success')
+            if data.get('status', '').upper() == 'SUCCESS':
+                wallet_data = data.get('data', {})
+
+                # Handle "wallet already exists" case - 9PSB returns account details in the error
+                if 'already exists' in data.get('message', '').lower():
+                    logger.info(f"9PSB wallet already exists, extracting details: {wallet_data.get('accountNumber')}")
+                else:
+                    logger.info(f"9PSB wallet opened successfully: {wallet_data.get('accountNumber')}")
+
+                return {"status": "success", "data": wallet_data}
             else:
                 logger.error(f"9PSB wallet opening failed: {data}")
                 return {"status": "error", "message": data.get('message', 'Unknown error'), "data": data}
 
         except requests.exceptions.HTTPError as e:
             error_message = f"9PSB API error: {e}"
+            error_details = None
             try:
                 error_data = response.json()
                 error_message = error_data.get('message', error_message)
+                error_details = error_data
+                logger.error(f"9PSB wallet opening HTTP error: {error_message}. Full response: {error_data}")
             except:
-                pass
-            logger.error(f"9PSB wallet opening HTTP error: {error_message}")
-            return {"status": "error", "message": error_message}
+                logger.error(f"9PSB wallet opening HTTP error: {error_message}. Status: {response.status_code}")
+            return {"status": "error", "message": error_message, "details": error_details}
         except requests.exceptions.RequestException as e:
             logger.error(f"9PSB wallet opening request failed: {e}")
             return {"status": "error", "message": f"Network error: {str(e)}"}

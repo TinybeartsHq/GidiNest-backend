@@ -16,9 +16,11 @@ def verify_bvn(bvn: str):
     """
 
 
-    PREMBLY_API_KEY = settings.PREMBLY_API_KEY 
-    
-    API_URL = "https://api.prembly.com/identitypass/verification/bvn"
+    PREMBLY_API_KEY = settings.PREMBLY_API_KEY
+    PREMBLY_APP_ID = getattr(settings, 'PREMBLY_APP_ID', None)
+
+    # Correct Prembly API endpoint (verified from docs)
+    API_URL = "https://api.prembly.com/verification/bvn"
 
     if not PREMBLY_API_KEY:
         print("Error: PREMBLY_API_KEY environment variable not set.")
@@ -26,19 +28,34 @@ def verify_bvn(bvn: str):
 
     headers = {
         'accept': 'application/json',
-        'content-type': 'application/x-www-form-urlencoded',
+        'content-type': 'application/json',  # Prembly uses JSON, not form-urlencoded
         'x-api-key': PREMBLY_API_KEY,
     }
 
+    # Add APP ID if configured
+    if PREMBLY_APP_ID:
+        headers['app-id'] = PREMBLY_APP_ID
+
+    # Prembly BVN payload
     data = {
         'number': bvn
     }
 
     try:
-        response = requests.post(API_URL, headers=headers, data=data, timeout=60) # Added timeout
-        response.raise_for_status() # Raise an HTTPError for bad responses (4xx or 5xx)
-        
-        return {"status":"success","data":response.json()}
+        # Use json parameter for JSON content-type
+        response = requests.post(API_URL, headers=headers, json=data, timeout=60)
+        response.raise_for_status()
+
+        response_data = response.json()
+        print(f"DEBUG - Prembly BVN API Response: {response_data}")
+
+        # Check if Prembly returned an error (e.g., insufficient balance)
+        if response_data.get('status') == False or response_data.get('verification', {}).get('status') == 'FAILED':
+            error_detail = response_data.get('detail', 'Verification failed')
+            print(f"Prembly BVN verification failed: {error_detail}")
+            return {"status": "error", "message": error_detail, "details": response_data}
+
+        return {"status":"success","data":response_data}
 
     except requests.exceptions.HTTPError as http_err:
         status_code = response.status_code if hasattr(response, 'status_code') else 'N/A'
@@ -75,6 +92,7 @@ def verify_nin(nin: str, first_name: str = None, last_name: str = None, dob: str
     """
 
     PREMBLY_API_KEY = settings.PREMBLY_API_KEY
+    PREMBLY_APP_ID = getattr(settings, 'PREMBLY_APP_ID', None)
 
     API_URL = "https://api.prembly.com/verification/vnin"
 
@@ -88,9 +106,13 @@ def verify_nin(nin: str, first_name: str = None, last_name: str = None, dob: str
         'x-api-key': PREMBLY_API_KEY,
     }
 
-    # Build payload - NIN endpoint uses JSON format (different from BVN)
+    # Add APP ID if configured
+    if PREMBLY_APP_ID:
+        headers['app-id'] = PREMBLY_APP_ID
+
+    # Build payload - NIN uses 'number_nin' field (per Prembly docs)
     data = {
-        'number': nin
+        'number_nin': nin
     }
 
     # Add optional fields if provided
@@ -105,7 +127,16 @@ def verify_nin(nin: str, first_name: str = None, last_name: str = None, dob: str
         response = requests.post(API_URL, headers=headers, json=data, timeout=60)
         response.raise_for_status()
 
-        return {"status": "success", "data": response.json()}
+        response_data = response.json()
+        print(f"DEBUG - Prembly NIN API Response: {response_data}")
+
+        # Check if Prembly returned an error (e.g., insufficient balance)
+        if response_data.get('status') == False or response_data.get('verification', {}).get('status') == 'FAILED':
+            error_detail = response_data.get('detail', 'Verification failed')
+            print(f"Prembly NIN verification failed: {error_detail}")
+            return {"status": "error", "message": error_detail, "details": response_data}
+
+        return {"status": "success", "data": response_data}
 
     except requests.exceptions.HTTPError as http_err:
         status_code = response.status_code if hasattr(response, 'status_code') else 'N/A'

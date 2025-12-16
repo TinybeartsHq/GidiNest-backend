@@ -9,7 +9,9 @@ from account.views_v2_kyc import (
     V2BVNVerifyView,
     V2BVNConfirmView,
     V2NINVerifyView,
-    V2NINConfirmView
+    V2NINConfirmView,
+    V2WalletRetryView,
+    V2WalletSyncView
 )
 
 urlpatterns = [
@@ -30,4 +32,13 @@ urlpatterns = [
 
     # Step 2: Confirm NIN details and save to database
     path('nin/confirm', V2NINConfirmView.as_view(), name='v2-kyc-nin-confirm'),
+
+    # ==========================================
+    # WALLET MANAGEMENT
+    # ==========================================
+    # Sync wallet details manually (for when wallet exists in 9PSB but not in database)
+    path('wallet/sync', V2WalletSyncView.as_view(), name='v2-kyc-wallet-sync'),
+
+    # Retry wallet creation if BVN verified but wallet creation failed
+    path('wallet/retry', V2WalletRetryView.as_view(), name='v2-kyc-wallet-retry'),
 ]
