@@ -244,7 +244,7 @@ class PSB9Client:
                     }
                 }
         """
-        url = f"{self.base_url}/waas/api/v1/wallet/enquiry"
+        url = f"{self.base_url}/waas/api/v1/wallet_enquiry"
         headers = self._get_headers(authenticated=True)
 
         payload = {
