@@ -183,16 +183,16 @@ class PSB9Client:
 
             data = response.json()
 
+            # Check if wallet already exists (9PSB returns FAILED status but includes wallet data)
+            if 'already exists' in data.get('message', '').lower():
+                wallet_data = data.get('data', {})
+                logger.info(f"9PSB wallet already exists, extracting details: {wallet_data.get('accountNumber')}")
+                return {"status": "success", "data": wallet_data}
+
             # Check status case-insensitively (9PSB returns 'SUCCESS' not 'success')
             if data.get('status', '').upper() == 'SUCCESS':
                 wallet_data = data.get('data', {})
-
-                # Handle "wallet already exists" case - 9PSB returns account details in the error
-                if 'already exists' in data.get('message', '').lower():
-                    logger.info(f"9PSB wallet already exists, extracting details: {wallet_data.get('accountNumber')}")
-                else:
-                    logger.info(f"9PSB wallet opened successfully: {wallet_data.get('accountNumber')}")
-
+                logger.info(f"9PSB wallet opened successfully: {wallet_data.get('accountNumber')}")
                 return {"status": "success", "data": wallet_data}
             else:
                 logger.error(f"9PSB wallet opening failed: {data}")

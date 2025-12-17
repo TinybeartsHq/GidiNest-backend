@@ -274,7 +274,15 @@ class V2BVNConfirmView(APIView):
                     if created or not wallet.psb9_account_number:
                         # Prepare customer data for 9PSB wallet creation
                         # 9PSB requires gender as integer: 1 = Male, 2 = Female
-                        gender_int = 1 if user.bvn_gender and user.bvn_gender.upper() in ["MALE", "M"] else 2
+                        # Default to Male (1) if gender is not set or invalid
+                        gender_int = 1  # Default to Male
+                        if user.bvn_gender:
+                            gender_str = str(user.bvn_gender).strip().upper()
+                            if gender_str in ["FEMALE", "F", "2"]:
+                                gender_int = 2
+                            elif gender_str in ["MALE", "M", "1"]:
+                                gender_int = 1
+                        logger.info(f"Gender for {user.email}: {user.bvn_gender} -> {gender_int}")
 
                         # Generate unique transaction tracking reference
                         tracking_ref = f"GIDINEST_WALLET_{user.id}_{uuid.uuid4().hex[:12].upper()}"
@@ -749,7 +757,15 @@ class V2WalletRetryView(APIView):
 
                 # Prepare customer data for 9PSB wallet creation
                 # 9PSB requires gender as integer: 1 = Male, 2 = Female
-                gender_int = 1 if user.bvn_gender and user.bvn_gender.upper() in ["MALE", "M"] else 2
+                # Default to Male (1) if gender is not set or invalid
+                gender_int = 1  # Default to Male
+                if user.bvn_gender:
+                    gender_str = str(user.bvn_gender).strip().upper()
+                    if gender_str in ["FEMALE", "F", "2"]:
+                        gender_int = 2
+                    elif gender_str in ["MALE", "M", "1"]:
+                        gender_int = 1
+                logger.info(f"Gender for {user.email}: {user.bvn_gender} -> {gender_int}")
 
                 # Generate unique transaction tracking reference
                 tracking_ref = f"GIDINEST_WALLET_RETRY_{user.id}_{uuid.uuid4().hex[:12].upper()}"
