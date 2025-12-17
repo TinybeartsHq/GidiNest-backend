@@ -82,6 +82,7 @@ class UserAdmin(BaseUserAdmin):
         'reset_passcodes',
         'apply_24hr_restriction',
         'fix_wallet_flags',
+        'retry_wallet_creation',
     ]
 
     fieldsets = (
@@ -271,6 +272,144 @@ class UserAdmin(BaseUserAdmin):
                 f'No users needed fixing. {skipped} user(s) either have no wallet or flag already set.',
                 messages.INFO
             )
+
+    @admin.action(description='🔄 Retry wallet creation (for users with BVN)')
+    def retry_wallet_creation(self, request, queryset):
+        """
+        Retry wallet creation for users who have verified BVN but wallet creation failed
+        """
+        from wallet.models import Wallet
+        from providers.helpers.psb9 import PSB9Client
+        from datetime import datetime
+        import uuid
+
+        psb9_client = PSB9Client()
+        success_count = 0
+        failed_count = 0
+        skipped_count = 0
+        errors = []
+
+        for user in queryset:
+            # Check if user has BVN
+            if not user.has_bvn or not user.bvn:
+                skipped_count += 1
+                errors.append(f"{user.email}: No BVN verified")
+                continue
+
+            # Check if wallet already has account number
+            try:
+                wallet = user.wallet
+                if wallet.psb9_account_number:
+                    skipped_count += 1
+                    errors.append(f"{user.email}: Wallet already exists")
+                    continue
+            except Wallet.DoesNotExist:
+                # Create wallet record
+                wallet = Wallet.objects.create(user=user)
+
+            # Prepare customer data for 9PSB wallet creation
+            try:
+                # Gender conversion
+                gender_int = 1  # Default to Male
+                if user.bvn_gender:
+                    gender_str = str(user.bvn_gender).strip().upper()
+                    if gender_str in ["FEMALE", "F", "2"]:
+                        gender_int = 2
+                    elif gender_str in ["MALE", "M", "1"]:
+                        gender_int = 1
+
+                # Date formatting
+                dob = user.bvn_dob if user.bvn_dob else user.dob
+                if isinstance(dob, str):
+                    try:
+                        from dateutil import parser
+                        dob_obj = parser.parse(dob)
+                        formatted_dob = dob_obj.strftime('%d/%m/%Y')
+                    except:
+                        try:
+                            dob_obj = datetime.strptime(dob, '%Y-%m-%d')
+                            formatted_dob = dob_obj.strftime('%d/%m/%Y')
+                        except:
+                            formatted_dob = dob
+                elif hasattr(dob, 'strftime'):
+                    formatted_dob = dob.strftime('%d/%m/%Y')
+                else:
+                    formatted_dob = str(dob) if dob else ""
+
+                # Names
+                first_name = user.bvn_first_name or user.first_name or ""
+                middle_name = getattr(user, 'bvn_middle_name', '') or getattr(user, 'middle_name', '') or ""
+                other_names_parts = [name.strip() for name in [first_name, middle_name] if name and name.strip()]
+                other_names = " ".join(other_names_parts) if other_names_parts else " "
+
+                tracking_ref = f"GIDINEST_ADMIN_RETRY_{user.id}_{uuid.uuid4().hex[:8].upper()}"
+
+                customer_data = {
+                    "firstName": first_name,
+                    "lastName": user.bvn_last_name or user.last_name,
+                    "otherNames": other_names,
+                    "phoneNo": user.bvn_phone or user.phone,
+                    "email": user.email,
+                    "bvn": user.bvn,
+                    "gender": gender_int,
+                    "dateOfBirth": formatted_dob,
+                    "address": user.bvn_residential_address or user.address or "Not Provided",
+                    "transactionTrackingRef": tracking_ref
+                }
+
+                # Create wallet with 9PSB
+                result = psb9_client.open_wallet(customer_data)
+
+                if result.get("status") == "success":
+                    wallet_data = result.get("data", {})
+
+                    # Update wallet
+                    wallet.provider_version = "v2"
+                    wallet.psb9_customer_id = wallet_data.get("customerID") or wallet_data.get("customerId")
+                    wallet.psb9_account_number = wallet_data.get("accountNumber")
+                    wallet.psb9_wallet_id = wallet_data.get("orderRef") or wallet_data.get("walletId")
+                    wallet.account_number = wallet_data.get("accountNumber")
+                    wallet.account_name = wallet_data.get("fullName") or wallet_data.get("accountName")
+                    wallet.bank = "9PSB"
+                    wallet.bank_code = "120001"
+                    wallet.save()
+
+                    # Update user flag
+                    user.has_virtual_wallet = True
+                    user.save()
+
+                    success_count += 1
+                else:
+                    error_msg = result.get("message", "Unknown error")
+                    failed_count += 1
+                    errors.append(f"{user.email}: {error_msg}")
+
+            except Exception as e:
+                failed_count += 1
+                errors.append(f"{user.email}: {str(e)}")
+
+        # Build result message
+        message_parts = []
+        if success_count > 0:
+            message_parts.append(f"✅ {success_count} wallet(s) created successfully")
+        if failed_count > 0:
+            message_parts.append(f"❌ {failed_count} failed")
+        if skipped_count > 0:
+            message_parts.append(f"⏭️ {skipped_count} skipped")
+
+        result_message = ". ".join(message_parts)
+
+        if errors:
+            result_message += f"\n\nDetails:\n" + "\n".join(errors[:10])  # Show first 10 errors
+            if len(errors) > 10:
+                result_message += f"\n... and {len(errors) - 10} more"
+
+        if success_count > 0:
+            self.message_user(request, result_message, messages.SUCCESS)
+        elif failed_count > 0:
+            self.message_user(request, result_message, messages.ERROR)
+        else:
+            self.message_user(request, result_message, messages.INFO)
 
     def save_model(self, request, obj, form, change):
         """
