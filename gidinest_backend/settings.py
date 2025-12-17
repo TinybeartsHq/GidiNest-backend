@@ -28,6 +28,9 @@ SECRET_KEY = os.getenv('SECRET_KEY', config('SECRET_KEY'))
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv('DEBUG', config('DEBUG', default=False, cast=bool))
 
+# Test mode - allows duplicate BVN/NIN for testing without enabling DEBUG
+TEST_MODE = os.getenv('TEST_MODE', config('TEST_MODE', default=False, cast=bool))
+
 ALLOWED_HOSTS = [
     "api.gidinest.com",
     "app.gidinest.com",

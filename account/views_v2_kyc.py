@@ -72,8 +72,8 @@ class V2BVNVerifyView(APIView):
                 logger.info(f"User {user.email} has BVN but no wallet, allowing retry for wallet creation")
 
         # Check if BVN is used by another account
-        # Skip duplicate check in DEBUG mode for testing
-        if not settings.DEBUG:
+        # Skip duplicate check in TEST_MODE for testing
+        if not settings.TEST_MODE:
             if UserModel.objects.filter(bvn=bvn).exclude(id=user.id).exists():
                 return Response({
                     "success": False,
@@ -83,7 +83,7 @@ class V2BVNVerifyView(APIView):
                     }
                 }, status=status.HTTP_400_BAD_REQUEST)
         else:
-            # In DEBUG mode, allow duplicate BVNs but log a warning
+            # In TEST_MODE, allow duplicate BVNs but log a warning
             if UserModel.objects.filter(bvn=bvn).exclude(id=user.id).exists():
                 logger.warning(f"TEST MODE: Allowing duplicate BVN {bvn} for user {user.email}")
 
@@ -426,8 +426,8 @@ class V2NINVerifyView(APIView):
             }, status=status.HTTP_400_BAD_REQUEST)
 
         # Check if NIN is used by another account
-        # Skip duplicate check in DEBUG mode for testing
-        if not settings.DEBUG:
+        # Skip duplicate check in TEST_MODE for testing
+        if not settings.TEST_MODE:
             if UserModel.objects.filter(nin=nin).exclude(id=user.id).exists():
                 return Response({
                     "success": False,
@@ -437,7 +437,7 @@ class V2NINVerifyView(APIView):
                     }
                 }, status=status.HTTP_400_BAD_REQUEST)
         else:
-            # In DEBUG mode, allow duplicate NINs but log a warning
+            # In TEST_MODE, allow duplicate NINs but log a warning
             if UserModel.objects.filter(nin=nin).exclude(id=user.id).exists():
                 logger.warning(f"TEST MODE: Allowing duplicate NIN {nin} for user {user.email}")
 
