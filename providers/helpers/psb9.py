@@ -205,6 +205,13 @@ class PSB9Client:
                 error_data = response.json()
                 error_message = error_data.get('message', error_message)
                 error_details = error_data
+
+                # Check if wallet already exists (9PSB returns HTTP error but includes wallet data)
+                if 'already exists' in error_message.lower():
+                    wallet_data = error_data.get('data', {})
+                    logger.info(f"9PSB wallet already exists (HTTP error), extracting details: {wallet_data.get('accountNumber')}")
+                    return {"status": "success", "data": wallet_data}
+
                 logger.error(f"9PSB wallet opening HTTP error: {error_message}. Full response: {error_data}")
             except:
                 logger.error(f"9PSB wallet opening HTTP error: {error_message}. Status: {response.status_code}")
