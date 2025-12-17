@@ -513,6 +513,245 @@ class PSB9Client:
             logger.error(f"9PSB status response invalid JSON: {e}")
             return {"status": "error", "message": "Invalid response from 9PSB"}
 
+    def debit_wallet(self, account_number, amount, transaction_id, narration="Debit"):
+        """
+        Test Case 4: Debit Wallet
+        """
+        url = f"{self.base_url}/waas/api/v1/debit/transfer"
+        headers = self._get_headers(authenticated=True)
+
+        payload = {
+            "accountNumber": account_number,
+            "amount": amount,
+            "transactionId": transaction_id,
+            "narration": narration
+        }
+
+        try:
+            response = requests.post(url, json=payload, headers=headers, timeout=60)
+            response.raise_for_status()
+            data = response.json()
+
+            if data.get('status', '').upper() == 'SUCCESS':
+                return {"status": "success", "data": data.get('data', {})}
+            else:
+                return {"status": "error", "message": data.get('message', 'Debit failed'), "data": data}
+
+        except requests.exceptions.RequestException as e:
+            logger.error(f"9PSB debit wallet failed: {e}")
+            return {"status": "error", "message": f"Network error: {str(e)}"}
+
+    def credit_wallet(self, account_number, amount, transaction_id, narration="Credit"):
+        """
+        Test Case 5: Credit Wallet
+        """
+        url = f"{self.base_url}/waas/api/v1/credit/transfer"
+        headers = self._get_headers(authenticated=True)
+
+        payload = {
+            "accountNumber": account_number,
+            "amount": amount,
+            "transactionId": transaction_id,
+            "narration": narration
+        }
+
+        try:
+            response = requests.post(url, json=payload, headers=headers, timeout=60)
+            response.raise_for_status()
+            data = response.json()
+
+            if data.get('status', '').upper() == 'SUCCESS':
+                return {"status": "success", "data": data.get('data', {})}
+            else:
+                return {"status": "error", "message": data.get('message', 'Credit failed'), "data": data}
+
+        except requests.exceptions.RequestException as e:
+            logger.error(f"9PSB credit wallet failed: {e}")
+            return {"status": "error", "message": f"Network error: {str(e)}"}
+
+    def get_banks(self):
+        """
+        Test Case 14: Get Banks
+        """
+        url = f"{self.base_url}/waas/api/v1/get_banks"
+        headers = self._get_headers(authenticated=True)
+
+        try:
+            response = requests.post(url, json={}, headers=headers, timeout=30)
+            response.raise_for_status()
+            data = response.json()
+
+            if data.get('status', '').upper() == 'SUCCESS':
+                return {"status": "success", "data": data.get('data', [])}
+            else:
+                return {"status": "error", "message": data.get('message', 'Failed to get banks')}
+
+        except requests.exceptions.RequestException as e:
+            logger.error(f"9PSB get banks failed: {e}")
+            return {"status": "error", "message": f"Network error: {str(e)}"}
+
+    def other_banks_enquiry(self, account_number, bank_code):
+        """
+        Test Case 6: Other Banks Account Enquiry
+        """
+        url = f"{self.base_url}/waas/api/v1/other_banks_enquiry"
+        headers = self._get_headers(authenticated=True)
+
+        payload = {
+            "accountNumber": account_number,
+            "bankCode": bank_code
+        }
+
+        try:
+            response = requests.post(url, json=payload, headers=headers, timeout=30)
+            response.raise_for_status()
+            data = response.json()
+
+            if data.get('status', '').upper() == 'SUCCESS':
+                return {"status": "success", "data": data.get('data', {})}
+            else:
+                return {"status": "error", "message": data.get('message', 'Account enquiry failed')}
+
+        except requests.exceptions.RequestException as e:
+            logger.error(f"9PSB account enquiry failed: {e}")
+            return {"status": "error", "message": f"Network error: {str(e)}"}
+
+    def other_banks_transfer(self, sender_account_number, receiver_account_number, bank_code, amount, transaction_id, narration="Transfer"):
+        """
+        Test Case 7: Other Banks Transfer
+        """
+        url = f"{self.base_url}/waas/api/v1/wallet_other_banks"
+        headers = self._get_headers(authenticated=True)
+
+        payload = {
+            "senderAccountNumber": sender_account_number,
+            "receiverAccountNumber": receiver_account_number,
+            "bankCode": bank_code,
+            "amount": amount,
+            "transactionId": transaction_id,
+            "narration": narration
+        }
+
+        try:
+            response = requests.post(url, json=payload, headers=headers, timeout=60)
+            response.raise_for_status()
+            data = response.json()
+
+            if data.get('status', '').upper() == 'SUCCESS':
+                return {"status": "success", "data": data.get('data', {})}
+            else:
+                return {"status": "error", "message": data.get('message', 'Transfer failed'), "data": data}
+
+        except requests.exceptions.RequestException as e:
+            logger.error(f"9PSB transfer failed: {e}")
+            return {"status": "error", "message": f"Network error: {str(e)}"}
+
+    def get_wallet_transactions(self, account_number, start_date=None, end_date=None):
+        """
+        Test Case 8: Wallet Transaction History
+        """
+        url = f"{self.base_url}/waas/api/v1/wallet_transactions"
+        headers = self._get_headers(authenticated=True)
+
+        payload = {
+            "accountNumber": account_number
+        }
+
+        if start_date:
+            payload["startDate"] = start_date
+        if end_date:
+            payload["endDate"] = end_date
+
+        try:
+            response = requests.post(url, json=payload, headers=headers, timeout=30)
+            response.raise_for_status()
+            data = response.json()
+
+            if data.get('status', '').upper() == 'SUCCESS':
+                return {"status": "success", "data": data.get('data', [])}
+            else:
+                return {"status": "error", "message": data.get('message', 'Failed to get transactions')}
+
+        except requests.exceptions.RequestException as e:
+            logger.error(f"9PSB transaction history failed: {e}")
+            return {"status": "error", "message": f"Network error: {str(e)}"}
+
+    def transaction_requery(self, transaction_id):
+        """
+        Test Case 11: Wallet Transaction Requery
+        """
+        url = f"{self.base_url}/waas/api/v1/wallet_requery"
+        headers = self._get_headers(authenticated=True)
+
+        payload = {
+            "transactionId": transaction_id
+        }
+
+        try:
+            response = requests.post(url, json=payload, headers=headers, timeout=30)
+            response.raise_for_status()
+            data = response.json()
+
+            if data.get('status', '').upper() == 'SUCCESS':
+                return {"status": "success", "data": data.get('data', {})}
+            else:
+                return {"status": "error", "message": data.get('message', 'Transaction not found')}
+
+        except requests.exceptions.RequestException as e:
+            logger.error(f"9PSB transaction requery failed: {e}")
+            return {"status": "error", "message": f"Network error: {str(e)}"}
+
+    def get_wallet_status(self, account_number):
+        """
+        Test Case 9: Wallet Status
+        """
+        url = f"{self.base_url}/waas/api/v1/wallet_status"
+        headers = self._get_headers(authenticated=True)
+
+        payload = {
+            "accountNumber": account_number
+        }
+
+        try:
+            response = requests.post(url, json=payload, headers=headers, timeout=30)
+            response.raise_for_status()
+            data = response.json()
+
+            if data.get('status', '').upper() == 'SUCCESS':
+                return {"status": "success", "data": data.get('data', {})}
+            else:
+                return {"status": "error", "message": data.get('message', 'Failed to get wallet status')}
+
+        except requests.exceptions.RequestException as e:
+            logger.error(f"9PSB wallet status failed: {e}")
+            return {"status": "error", "message": f"Network error: {str(e)}"}
+
+    def change_wallet_status(self, account_number, status):
+        """
+        Test Case 10: Change Wallet Status
+        """
+        url = f"{self.base_url}/waas/api/v1/change_wallet_status"
+        headers = self._get_headers(authenticated=True)
+
+        payload = {
+            "accountNumber": account_number,
+            "status": status
+        }
+
+        try:
+            response = requests.post(url, json=payload, headers=headers, timeout=30)
+            response.raise_for_status()
+            data = response.json()
+
+            if data.get('status', '').upper() == 'SUCCESS':
+                return {"status": "success", "data": data.get('data', {})}
+            else:
+                return {"status": "error", "message": data.get('message', 'Failed to change status')}
+
+        except requests.exceptions.RequestException as e:
+            logger.error(f"9PSB change status failed: {e}")
+            return {"status": "error", "message": f"Network error: {str(e)}"}
+
 
 # Create a singleton instance for easy imports
 psb9_client = PSB9Client()

@@ -56,6 +56,7 @@ urlpatterns = [
     path("api/v2/kyc/", include("account.urls_v2_kyc")),
     path("api/v2/dashboard/", include("dashboard.urls")),
     path("api/v2/wallet/", include("wallet.urls_v2")),
+    path("api/v2/wallet/9psb/", include("wallet.urls_v2_9psb")),  # 9PSB operations
     path("api/v2/transactions/", include("transactions.urls")),
     path("api/v2/savings/", include("savings.urls_v2")),
     path("api/v2/community/", include("community.urls_v2")),
