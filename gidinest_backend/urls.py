@@ -29,6 +29,9 @@ urlpatterns = [
     path('internal-admin/', admin.site.urls),
     path('internal-admin/support-dashboard/', support_dashboard, name='support_dashboard'),
 
+    # Admin API endpoints (requires staff authentication)
+    path('api/internal-admin/', include('account.urls_admin_api')),
+
     # ==========================================
     # API DOCUMENTATION (Swagger/OpenAPI)
     # ==========================================

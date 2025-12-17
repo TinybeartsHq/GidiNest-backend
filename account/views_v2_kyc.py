@@ -341,6 +341,11 @@ class V2BVNConfirmView(APIView):
                             wallet.bank_code = "120001"  # 9PSB bank code
                             wallet.save()
 
+                            # Update user flag
+                            if not user.has_virtual_wallet:
+                                user.has_virtual_wallet = True
+                                user.save()
+
                             wallet_created = True
                             wallet_account_number = wallet.psb9_account_number
                             logger.info(f"9PSB wallet created successfully for {user.email}: {wallet_account_number}")
@@ -810,6 +815,11 @@ class V2WalletRetryView(APIView):
                     wallet.bank = "9PSB"
                     wallet.bank_code = "120001"  # 9PSB bank code
                     wallet.save()
+
+                    # Update user flag
+                    if not user.has_virtual_wallet:
+                        user.has_virtual_wallet = True
+                        user.save()
 
                     logger.info(f"9PSB wallet created successfully for {user.email}: {wallet.psb9_account_number}")
 
