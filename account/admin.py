@@ -12,6 +12,33 @@ from .models.users import UserModel
 from .models import UserDevices, UserSession, UserBankAccount, CustomerNote, AdminAuditLog
 
 
+class WalletIssueFilter(admin.SimpleListFilter):
+    """Filter to find users with wallet flag issues"""
+    title = 'wallet flag issue'
+    parameter_name = 'wallet_flag_issue'
+
+    def lookups(self, request, model_admin):
+        return (
+            ('has_issue', 'Has wallet but flag not set'),
+            ('no_issue', 'Flag correctly set'),
+        )
+
+    def queryset(self, request, queryset):
+        from wallet.models import Wallet
+
+        if self.value() == 'has_issue':
+            # Users who have wallet with account number but has_virtual_wallet=False
+            return queryset.filter(
+                has_virtual_wallet=False,
+                wallet__account_number__isnull=False
+            )
+        elif self.value() == 'no_issue':
+            # Users where flag is correctly set
+            return queryset.filter(
+                Q(has_virtual_wallet=True) | Q(wallet__account_number__isnull=True)
+            )
+
+
 class UserChangeForm(forms.ModelForm):
     """
     Custom form for editing users that makes all fields optional except email.
@@ -37,7 +64,7 @@ class UserAdmin(BaseUserAdmin):
         'email', 'phone', 'first_name', 'last_name', 'is_verified', 'is_staff', 'is_active',
         'account_tier', 'support_notes_count'
     )
-    list_filter = ('is_active', 'is_staff', 'is_verified', 'account_tier', 'has_bvn', 'has_nin')
+    list_filter = ('is_active', 'is_staff', 'is_verified', 'account_tier', 'has_bvn', 'has_nin', WalletIssueFilter)
     search_fields = ('email', 'first_name', 'last_name', 'phone', 'bvn', 'nin')
     ordering = ('-created_at',)
     readonly_fields = (
@@ -54,6 +81,7 @@ class UserAdmin(BaseUserAdmin):
         'reset_transaction_pins',
         'reset_passcodes',
         'apply_24hr_restriction',
+        'fix_wallet_flags',
     ]
 
     fieldsets = (
@@ -208,6 +236,41 @@ class UserAdmin(BaseUserAdmin):
             user.apply_24hr_restriction()
             count += 1
         self.message_user(request, f'{count} users now have 24-hour transaction restrictions.', messages.WARNING)
+
+    @admin.action(description='💰 Fix wallet flags for users with wallets')
+    def fix_wallet_flags(self, request, queryset):
+        """
+        Fix has_virtual_wallet flag for users who have wallet data but flag is not set
+        """
+        from wallet.models import Wallet
+
+        count = 0
+        skipped = 0
+        for user in queryset:
+            try:
+                wallet = user.wallet
+                # Check if wallet has account number but flag not set
+                if wallet.account_number and not user.has_virtual_wallet:
+                    user.has_virtual_wallet = True
+                    user.save()
+                    count += 1
+                else:
+                    skipped += 1
+            except Wallet.DoesNotExist:
+                skipped += 1
+
+        if count > 0:
+            self.message_user(
+                request,
+                f'✅ Fixed wallet flag for {count} user(s). {skipped} skipped (no wallet or already fixed).',
+                messages.SUCCESS
+            )
+        else:
+            self.message_user(
+                request,
+                f'No users needed fixing. {skipped} user(s) either have no wallet or flag already set.',
+                messages.INFO
+            )
 
     def save_model(self, request, obj, form, change):
         """
