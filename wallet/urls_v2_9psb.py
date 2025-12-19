@@ -15,9 +15,18 @@ from .views_v2_9psb import (
     WalletTransactionRequeryAPIView,
     WalletStatusAPIView,
     ChangeWalletStatusAPIView,
+    WalletOpeningAPIView,
+    WalletUpgradeAPIView,
+    UpgradeStatusAPIView,
+    NotificationRequeryAPIView,
+    GetWalletByBVNAPIView,
+    WalletUpgradeFileAPIView,
 )
 
 urlpatterns = [
+    # Test Case 1: Wallet Opening
+    path('open', WalletOpeningAPIView.as_view(), name='wallet-opening'),
+
     # Test Case 3: Wallet Enquiry (Get Balance)
     path('enquiry', WalletEnquiryAPIView.as_view(), name='wallet-enquiry'),
 
@@ -47,4 +56,19 @@ urlpatterns = [
 
     # Test Case 10: Change Wallet Status (Admin)
     path('status/change', ChangeWalletStatusAPIView.as_view(), name='change-wallet-status'),
+
+    # Test Case 12: Wallet Upgrade
+    path('upgrade', WalletUpgradeAPIView.as_view(), name='wallet-upgrade'),
+
+    # Test Case 13: Upgrade Status
+    path('upgrade/status', UpgradeStatusAPIView.as_view(), name='upgrade-status'),
+
+    # Test Case 15: Notification Requery
+    path('notification/requery', NotificationRequeryAPIView.as_view(), name='notification-requery'),
+
+    # Test Case 16: Get Wallet by BVN (Admin)
+    path('wallet/bvn', GetWalletByBVNAPIView.as_view(), name='get-wallet-by-bvn'),
+
+    # Test Case 17: Wallet Upgrade with File Upload
+    path('upgrade/file', WalletUpgradeFileAPIView.as_view(), name='wallet-upgrade-file'),
 ]

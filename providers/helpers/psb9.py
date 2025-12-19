@@ -752,6 +752,133 @@ class PSB9Client:
             logger.error(f"9PSB change status failed: {e}")
             return {"status": "error", "message": f"Network error: {str(e)}"}
 
+    def get_upgrade_status(self, account_number):
+        """
+        Test Case 13: Upgrade Status
+        Check status of wallet upgrade request
+        """
+        url = f"{self.base_url}/waas/api/v1/upgrade_status"
+        headers = self._get_headers(authenticated=True)
+
+        payload = {
+            "accountNumber": account_number
+        }
+
+        try:
+            response = requests.post(url, json=payload, headers=headers, timeout=30)
+            response.raise_for_status()
+            data = response.json()
+
+            if data.get('status', '').upper() == 'SUCCESS':
+                return {"status": "success", "data": data.get('data', {})}
+            else:
+                return {"status": "error", "message": data.get('message', 'Failed to process request, no record found')}
+
+        except requests.exceptions.RequestException as e:
+            logger.error(f"9PSB upgrade status check failed: {e}")
+            return {"status": "error", "message": f"Network error: {str(e)}"}
+
+    def notification_requery(self, transaction_id=None, account_number=None):
+        """
+        Test Case 15: Notification Requery
+        Requery webhook notifications for transactions
+        """
+        url = f"{self.base_url}/waas/api/v1/notification_requery"
+        headers = self._get_headers(authenticated=True)
+
+        payload = {}
+        if transaction_id:
+            payload["transactionId"] = transaction_id
+        if account_number:
+            payload["accountNumber"] = account_number
+
+        try:
+            response = requests.post(url, json=payload, headers=headers, timeout=30)
+            response.raise_for_status()
+            data = response.json()
+
+            if data.get('status', '').upper() == 'SUCCESS':
+                return {"status": "success", "data": data.get('data', {})}
+            else:
+                return {"status": "error", "message": data.get('message', 'An error occurred for this transaction')}
+
+        except requests.exceptions.RequestException as e:
+            logger.error(f"9PSB notification requery failed: {e}")
+            return {"status": "error", "message": f"Network error: {str(e)}"}
+
+    def get_wallet_by_bvn(self, bvn):
+        """
+        Test Case 16: Get Wallet by BVN
+        Retrieve wallet account details using BVN
+        """
+        url = f"{self.base_url}/waas/api/v1/get_wallet"
+        headers = self._get_headers(authenticated=True)
+
+        payload = {
+            "bvn": bvn
+        }
+
+        try:
+            response = requests.post(url, json=payload, headers=headers, timeout=30)
+            response.raise_for_status()
+            data = response.json()
+
+            if data.get('status', '').upper() == 'SUCCESS':
+                return {"status": "success", "data": data.get('data', {})}
+            else:
+                return {"status": "error", "message": data.get('message', 'A wallet does not exist with this bvn')}
+
+        except requests.exceptions.RequestException as e:
+            logger.error(f"9PSB get wallet by BVN failed: {e}")
+            return {"status": "error", "message": f"Network error: {str(e)}"}
+
+    def upgrade_account_with_file(self, account_number, tier, identity_type, identity_number, utility_bill_file):
+        """
+        Test Case 17: Wallet Upgrade with File Upload
+        Upgrade wallet with document file upload (multipart/form-data)
+
+        Args:
+            account_number (str): Account number to upgrade
+            tier (int): Target tier (2 or 3)
+            identity_type (str): Type of identity (e.g., "NIN", "DRIVERS_LICENSE", "VOTERS_CARD")
+            identity_number (str): Identity document number
+            utility_bill_file: File object for utility bill
+        """
+        url = f"{self.base_url}/waas/api/v1/wallet_upgrade_file_upload"
+        headers = self._get_headers(authenticated=True)
+        # Remove Content-Type to let requests set it with boundary for multipart
+        headers.pop('Content-Type', None)
+
+        # Prepare multipart form data
+        files = {
+            'utilityBill': utility_bill_file
+        }
+
+        data = {
+            'accountNumber': account_number,
+            'tier': str(tier),
+            'identityType': identity_type,
+            'identityNumber': identity_number
+        }
+
+        try:
+            logger.info(f"Upgrading 9PSB account with file: {account_number} to Tier {tier}")
+            response = requests.post(url, data=data, files=files, headers=headers, timeout=60)
+            response.raise_for_status()
+
+            response_data = response.json()
+
+            if response_data.get('status', '').upper() == 'SUCCESS':
+                logger.info(f"9PSB account upgrade with file successful: {account_number} -> Tier {tier}")
+                return {"status": "success", "data": response_data.get('data', {})}
+            else:
+                logger.error(f"9PSB account upgrade with file failed: {response_data}")
+                return {"status": "error", "message": response_data.get('message', 'Invalid merchant kindly contact 9psb')}
+
+        except requests.exceptions.RequestException as e:
+            logger.error(f"9PSB account upgrade with file failed: {e}")
+            return {"status": "error", "message": f"Network error: {str(e)}"}
+
 
 # Create a singleton instance for easy imports
 psb9_client = PSB9Client()

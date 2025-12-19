@@ -646,3 +646,390 @@ class ChangeWalletStatusAPIView(APIView):
                 message="Failed to change wallet status",
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+
+class WalletOpeningAPIView(APIView):
+    """
+    Test Case 1: Wallet Opening
+    Create new customer wallet account
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        """Open a new wallet for authenticated user"""
+        user = request.user
+
+        # Check if user already has a 9PSB wallet
+        try:
+            wallet = user.wallet
+            if wallet.psb9_account_number:
+                return error_response(
+                    message="User already has a 9PSB wallet account",
+                    status_code=status.HTTP_400_BAD_REQUEST
+                )
+        except Wallet.DoesNotExist:
+            pass
+
+        # Required fields from request
+        first_name = request.data.get('first_name', user.first_name)
+        last_name = request.data.get('last_name', user.last_name)
+        middle_name = request.data.get('middle_name', '')
+        phone_number = request.data.get('phone_number', user.phone_number)
+        email = request.data.get('email', user.email)
+        bvn = request.data.get('bvn')
+        gender = request.data.get('gender')  # 1 for Male, 2 for Female
+        date_of_birth = request.data.get('date_of_birth')  # Format: dd/mm/yyyy
+        address = request.data.get('address')
+
+        # Validation
+        errors = {}
+        if not bvn:
+            errors['bvn'] = ["BVN is required"]
+        if not gender:
+            errors['gender'] = ["Gender is required (1=Male, 2=Female)"]
+        if not date_of_birth:
+            errors['date_of_birth'] = ["Date of birth is required (format: dd/mm/yyyy)"]
+        if not address:
+            errors['address'] = ["Address is required"]
+
+        if errors:
+            return validation_error_response(errors)
+
+        # Generate unique transaction reference
+        transaction_ref = f"WLT_{user.id}_{uuid.uuid4().hex[:12].upper()}"
+
+        # Prepare customer data for 9PSB
+        customer_data = {
+            "firstName": first_name,
+            "lastName": last_name,
+            "otherNames": f"{first_name} {middle_name}".strip(),
+            "phoneNo": phone_number,
+            "email": email,
+            "bvn": bvn,
+            "gender": int(gender),
+            "dateOfBirth": date_of_birth,
+            "address": address,
+            "transactionTrackingRef": transaction_ref
+        }
+
+        try:
+            psb9_client = PSB9Client()
+            result = psb9_client.open_wallet(customer_data)
+
+            if result.get("status") == "success":
+                wallet_data = result.get("data", {})
+                account_number = wallet_data.get("accountNumber")
+                account_name = wallet_data.get("accountName")
+
+                # Update or create wallet
+                wallet, created = Wallet.objects.get_or_create(user=user)
+                wallet.psb9_account_number = account_number
+                wallet.account_number = account_number
+                wallet.account_name = account_name
+                wallet.bank = "9 Payment Service Bank"
+                wallet.save()
+
+                return success_response(
+                    message="Wallet opened successfully",
+                    data={
+                        "account_number": account_number,
+                        "account_name": account_name,
+                        "bank": "9 Payment Service Bank",
+                        "transaction_ref": transaction_ref
+                    },
+                    status_code=status.HTTP_201_CREATED
+                )
+            else:
+                return error_response(
+                    message=result.get("message", "Failed to open wallet"),
+                    status_code=status.HTTP_400_BAD_REQUEST
+                )
+
+        except Exception as e:
+            logger.error(f"Wallet opening error: {str(e)}", exc_info=True)
+            return error_response(
+                message="Failed to open wallet",
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+class WalletUpgradeAPIView(APIView):
+    """
+    Test Case 12: Wallet Upgrade
+    Upgrade wallet from Tier 1 to Tier 2/3
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        """Upgrade wallet tier"""
+        user = request.user
+
+        try:
+            wallet = user.wallet
+            if not wallet.psb9_account_number:
+                return error_response(
+                    message="No wallet account found",
+                    status_code=status.HTTP_404_NOT_FOUND
+                )
+        except Wallet.DoesNotExist:
+            return error_response(
+                message="Wallet not found",
+                status_code=status.HTTP_404_NOT_FOUND
+            )
+
+        tier = request.data.get('tier')
+        identity_type = request.data.get('identity_type')
+        identity_number = request.data.get('identity_number')
+
+        # Validation
+        errors = {}
+        if not tier:
+            errors['tier'] = ["Tier is required (2 or 3)"]
+        elif int(tier) not in [2, 3]:
+            errors['tier'] = ["Tier must be 2 or 3"]
+        if not identity_type:
+            errors['identity_type'] = ["Identity type is required"]
+        if not identity_number:
+            errors['identity_number'] = ["Identity number is required"]
+
+        if errors:
+            return validation_error_response(errors)
+
+        # Prepare KYC data
+        kyc_data = {
+            "identityType": identity_type,
+            "identityNumber": identity_number
+        }
+
+        try:
+            psb9_client = PSB9Client()
+            result = psb9_client.upgrade_account_tier(
+                account_number=wallet.psb9_account_number,
+                tier=int(tier),
+                kyc_data=kyc_data
+            )
+
+            if result.get("status") == "success":
+                return success_response(
+                    message=f"Wallet upgrade to Tier {tier} initiated successfully",
+                    data=result.get("data", {})
+                )
+            else:
+                return error_response(
+                    message=result.get("message", "Invalid merchant kindly contact 9psb"),
+                    status_code=status.HTTP_400_BAD_REQUEST
+                )
+
+        except Exception as e:
+            logger.error(f"Wallet upgrade error: {str(e)}", exc_info=True)
+            return error_response(
+                message="Failed to upgrade wallet",
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+class UpgradeStatusAPIView(APIView):
+    """
+    Test Case 13: Upgrade Status
+    Check status of wallet upgrade request
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        """Get upgrade status"""
+        user = request.user
+
+        try:
+            wallet = user.wallet
+            if not wallet.psb9_account_number:
+                return error_response(
+                    message="No wallet account found",
+                    status_code=status.HTTP_404_NOT_FOUND
+                )
+
+            psb9_client = PSB9Client()
+            result = psb9_client.get_upgrade_status(wallet.psb9_account_number)
+
+            if result.get("status") == "success":
+                return success_response(
+                    message="Upgrade status retrieved successfully",
+                    data=result.get("data", {})
+                )
+            else:
+                return error_response(
+                    message=result.get("message", "Failed to process request, no record found"),
+                    status_code=status.HTTP_404_NOT_FOUND
+                )
+
+        except Wallet.DoesNotExist:
+            return error_response(
+                message="Wallet not found",
+                status_code=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            logger.error(f"Upgrade status error: {str(e)}", exc_info=True)
+            return error_response(
+                message="Failed to retrieve upgrade status",
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+class NotificationRequeryAPIView(APIView):
+    """
+    Test Case 15: Notification Requery
+    Requery webhook notifications for transactions
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        """Requery notification"""
+        transaction_id = request.data.get('transaction_id')
+        account_number = request.data.get('account_number')
+
+        if not transaction_id and not account_number:
+            return validation_error_response({
+                "error": ["Either transaction_id or account_number is required"]
+            })
+
+        try:
+            psb9_client = PSB9Client()
+            result = psb9_client.notification_requery(
+                transaction_id=transaction_id,
+                account_number=account_number
+            )
+
+            if result.get("status") == "success":
+                return success_response(
+                    message="Notification requery successful",
+                    data=result.get("data", {})
+                )
+            else:
+                return error_response(
+                    message=result.get("message", "An error occurred for this transaction"),
+                    status_code=status.HTTP_400_BAD_REQUEST
+                )
+
+        except Exception as e:
+            logger.error(f"Notification requery error: {str(e)}", exc_info=True)
+            return error_response(
+                message="Failed to requery notification",
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+class GetWalletByBVNAPIView(APIView):
+    """
+    Test Case 16: Get Wallet by BVN
+    Retrieve wallet account details using BVN (Admin only)
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        """Get wallet by BVN"""
+        # Admin only for privacy/security
+        if not request.user.is_staff:
+            return error_response(
+                message="Unauthorized - Admin access required",
+                status_code=status.HTTP_403_FORBIDDEN
+            )
+
+        bvn = request.data.get('bvn')
+
+        if not bvn:
+            return validation_error_response({"bvn": ["BVN is required"]})
+
+        try:
+            psb9_client = PSB9Client()
+            result = psb9_client.get_wallet_by_bvn(bvn)
+
+            if result.get("status") == "success":
+                return success_response(
+                    message="Wallet retrieved successfully",
+                    data=result.get("data", {})
+                )
+            else:
+                return error_response(
+                    message=result.get("message", "A wallet does not exist with this bvn"),
+                    status_code=status.HTTP_404_NOT_FOUND
+                )
+
+        except Exception as e:
+            logger.error(f"Get wallet by BVN error: {str(e)}", exc_info=True)
+            return error_response(
+                message="Failed to retrieve wallet",
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+class WalletUpgradeFileAPIView(APIView):
+    """
+    Test Case 17: Wallet Upgrade with File Upload
+    Upgrade wallet with document file upload
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        """Upgrade wallet with file"""
+        user = request.user
+
+        try:
+            wallet = user.wallet
+            if not wallet.psb9_account_number:
+                return error_response(
+                    message="No wallet account found",
+                    status_code=status.HTTP_404_NOT_FOUND
+                )
+        except Wallet.DoesNotExist:
+            return error_response(
+                message="Wallet not found",
+                status_code=status.HTTP_404_NOT_FOUND
+            )
+
+        tier = request.data.get('tier')
+        identity_type = request.data.get('identity_type')
+        identity_number = request.data.get('identity_number')
+        utility_bill = request.FILES.get('utility_bill')
+
+        # Validation
+        errors = {}
+        if not tier:
+            errors['tier'] = ["Tier is required (2 or 3)"]
+        elif int(tier) not in [2, 3]:
+            errors['tier'] = ["Tier must be 2 or 3"]
+        if not identity_type:
+            errors['identity_type'] = ["Identity type is required"]
+        if not identity_number:
+            errors['identity_number'] = ["Identity number is required"]
+        if not utility_bill:
+            errors['utility_bill'] = ["Utility bill file is required"]
+
+        if errors:
+            return validation_error_response(errors)
+
+        try:
+            psb9_client = PSB9Client()
+            result = psb9_client.upgrade_account_with_file(
+                account_number=wallet.psb9_account_number,
+                tier=int(tier),
+                identity_type=identity_type,
+                identity_number=identity_number,
+                utility_bill_file=utility_bill
+            )
+
+            if result.get("status") == "success":
+                return success_response(
+                    message=f"Wallet upgrade to Tier {tier} with file initiated successfully",
+                    data=result.get("data", {})
+                )
+            else:
+                return error_response(
+                    message=result.get("message", "Invalid merchant kindly contact 9psb"),
+                    status_code=status.HTTP_400_BAD_REQUEST
+                )
+
+        except Exception as e:
+            logger.error(f"Wallet upgrade with file error: {str(e)}", exc_info=True)
+            return error_response(
+                message="Failed to upgrade wallet with file",
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )

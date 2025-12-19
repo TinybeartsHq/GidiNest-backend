@@ -208,6 +208,7 @@ CORS_ALLOWED_ORIGINS = [
     "https://www.gidinest.com",
     "https://app.gidinest.com",
     "https://api.gidinest.com",
+    "https://staging.gidinest.com",
     # Local development URLs
     "http://localhost:3000",
     "http://localhost:3001",
