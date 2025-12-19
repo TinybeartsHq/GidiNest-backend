@@ -36,6 +36,7 @@ ALLOWED_HOSTS = [
     "app.gidinest.com",
     "gidinest.com",
     "www.gidinest.com",
+    "staging.gidinest.com",
     "localhost",
     "127.0.0.1",
     "192.168.8.2",
