@@ -83,6 +83,7 @@ class UserAdmin(BaseUserAdmin):
         'apply_24hr_restriction',
         'fix_wallet_flags',
         'retry_wallet_creation',
+        'create_embedly_wallets',
     ]
 
     fieldsets = (
@@ -401,6 +402,154 @@ class UserAdmin(BaseUserAdmin):
 
         if errors:
             result_message += f"\n\nDetails:\n" + "\n".join(errors[:10])  # Show first 10 errors
+            if len(errors) > 10:
+                result_message += f"\n... and {len(errors) - 10} more"
+
+        if success_count > 0:
+            self.message_user(request, result_message, messages.SUCCESS)
+        elif failed_count > 0:
+            self.message_user(request, result_message, messages.ERROR)
+        else:
+            self.message_user(request, result_message, messages.INFO)
+
+    @admin.action(description='💳 Create Embedly wallets (for Prembly verified users)')
+    def create_embedly_wallets(self, request, queryset):
+        """
+        Create Embedly wallets for users who have completed Prembly BVN/NIN verification.
+        This is for temporary use until 9PSB goes live.
+        """
+        from wallet.models import Wallet
+        from providers.helpers.embedly import EmbedlyClient
+        from datetime import datetime
+
+        embedly_client = EmbedlyClient()
+        success_count = 0
+        failed_count = 0
+        skipped_count = 0
+        errors = []
+
+        for user in queryset:
+            # Check if user has completed Prembly verification (BVN or NIN)
+            if not user.has_bvn and not user.has_nin:
+                skipped_count += 1
+                errors.append(f"{user.email}: No Prembly verification (BVN/NIN required)")
+                continue
+
+            # Check if wallet already has Embedly account
+            try:
+                wallet = user.wallet
+                if wallet.embedly_wallet_id and wallet.account_number:
+                    skipped_count += 1
+                    errors.append(f"{user.email}: Embedly wallet already exists ({wallet.account_number})")
+                    continue
+            except Wallet.DoesNotExist:
+                # Create wallet record
+                wallet = Wallet.objects.create(user=user)
+
+            # Create Embedly customer and wallet
+            try:
+                # Step 1: Create Embedly customer
+                first_name = user.bvn_first_name or user.first_name or ""
+                last_name = user.bvn_last_name or user.last_name or ""
+                phone = user.bvn_phone or user.phone or ""
+
+                # Format DOB for Embedly (they expect: "1999-10-27T09")
+                dob = user.bvn_dob if user.bvn_dob else user.dob
+                if dob:
+                    if isinstance(dob, str):
+                        # Parse string date
+                        try:
+                            from dateutil import parser
+                            dob_obj = parser.parse(dob)
+                            formatted_dob = dob_obj.strftime('%Y-%m-%dT09')
+                        except:
+                            formatted_dob = None
+                    elif hasattr(dob, 'strftime'):
+                        formatted_dob = dob.strftime('%Y-%m-%dT09')
+                    else:
+                        formatted_dob = None
+                else:
+                    formatted_dob = None
+
+                customer_payload = {
+                    "firstName": first_name,
+                    "lastName": last_name,
+                    "emailAddress": user.email,
+                    "mobileNumber": phone,
+                }
+
+                if formatted_dob:
+                    customer_payload["dob"] = formatted_dob
+
+                # Create customer
+                customer_result = embedly_client.create_customer(payload=customer_payload)
+
+                if not customer_result.get("success"):
+                    error_msg = customer_result.get("message", "Failed to create customer")
+                    failed_count += 1
+                    errors.append(f"{user.email}: {error_msg}")
+                    continue
+
+                customer_id = customer_result["data"]["id"]
+
+                # Step 2: Upgrade KYC with BVN (if available)
+                if user.bvn:
+                    kyc_result = embedly_client.upgrade_kyc(customer_id=customer_id, bvn=user.bvn)
+                    if not kyc_result.get("success"):
+                        # KYC upgrade failed, but we can still create wallet
+                        errors.append(f"{user.email}: Warning - KYC upgrade failed but continuing with wallet creation")
+
+                # Step 3: Create wallet
+                wallet_name = f"{first_name} {last_name}".strip() or user.email
+                wallet_result = embedly_client.create_wallet(
+                    customer_id=customer_id,
+                    name=wallet_name,
+                    phone=phone
+                )
+
+                if not wallet_result.get("success"):
+                    error_msg = wallet_result.get("message", "Failed to create wallet")
+                    failed_count += 1
+                    errors.append(f"{user.email}: {error_msg}")
+                    continue
+
+                wallet_data = wallet_result["data"]
+
+                # Step 4: Update wallet record
+                wallet.provider_version = "v1"  # Embedly is v1
+                wallet.embedly_customer_id = customer_id
+                wallet.embedly_wallet_id = wallet_data.get("id")
+                wallet.account_number = wallet_data.get("accountNumber")
+                wallet.account_name = wallet_data.get("name")
+                wallet.bank = wallet_data.get("bankName", "Embedly")
+                wallet.bank_code = wallet_data.get("bankCode", "")
+                wallet.save()
+
+                # Update user flags
+                user.embedly_customer_id = customer_id
+                user.embedly_wallet_id = wallet_data.get("id")
+                user.has_virtual_wallet = True
+                user.save()
+
+                success_count += 1
+
+            except Exception as e:
+                failed_count += 1
+                errors.append(f"{user.email}: {str(e)}")
+
+        # Build result message
+        message_parts = []
+        if success_count > 0:
+            message_parts.append(f"✅ {success_count} Embedly wallet(s) created successfully")
+        if failed_count > 0:
+            message_parts.append(f"❌ {failed_count} failed")
+        if skipped_count > 0:
+            message_parts.append(f"⏭️ {skipped_count} skipped")
+
+        result_message = ". ".join(message_parts)
+
+        if errors:
+            result_message += f"\n\nDetails:\n" + "\n".join(errors[:10])
             if len(errors) > 10:
                 result_message += f"\n... and {len(errors) - 10} more"
 
