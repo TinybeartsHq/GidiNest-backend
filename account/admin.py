@@ -448,7 +448,7 @@ class UserAdmin(BaseUserAdmin):
 
             # Create Embedly customer and wallet
             try:
-                # Step 1: Create Embedly customer
+                # Get required user fields
                 first_name = user.bvn_first_name or user.first_name or ""
                 last_name = user.bvn_last_name or user.last_name or ""
                 phone = user.bvn_phone or user.phone or ""
@@ -464,44 +464,53 @@ class UserAdmin(BaseUserAdmin):
                     errors.append(f"{user.email}: Missing phone number (required by Embedly)")
                     continue
 
-                # Prepare customer payload with all available fields
-                customer_payload = {
-                    "firstName": first_name,
-                    "lastName": last_name,
-                    "emailAddress": user.email,
-                    "mobileNumber": phone,
-                }
+                # Step 1: Get or create Embedly customer
+                if user.embedly_customer_id:
+                    # User already has Embedly customer, use existing ID
+                    customer_id = user.embedly_customer_id
+                else:
+                    # Create new Embedly customer
+                    customer_payload = {
+                        "firstName": first_name,
+                        "lastName": last_name,
+                        "emailAddress": user.email,
+                        "mobileNumber": phone,
+                    }
 
-                # Add optional fields if available
-                if user.dob:
-                    customer_payload["dob"] = str(user.dob) if hasattr(user.dob, 'strftime') else user.dob
+                    # Add optional fields if available
+                    if user.dob:
+                        customer_payload["dob"] = str(user.dob) if hasattr(user.dob, 'strftime') else user.dob
 
-                if user.address:
-                    customer_payload["address"] = user.address
+                    if user.address:
+                        customer_payload["address"] = user.address
 
-                if user.state:
-                    customer_payload["city"] = user.state
+                    if user.state:
+                        customer_payload["city"] = user.state
 
-                if user.country:
-                    customer_payload["country"] = user.country
+                    if user.country:
+                        customer_payload["country"] = user.country
 
-                # Create customer (pass dict directly, not as named parameter)
-                customer_result = embedly_client.create_customer(customer_payload)
+                    # Create customer (pass dict directly, not as named parameter)
+                    customer_result = embedly_client.create_customer(customer_payload)
 
-                if not customer_result.get("success"):
-                    error_msg = customer_result.get("message", "Failed to create customer")
+                    if not customer_result.get("success"):
+                        error_msg = customer_result.get("message", "Failed to create customer")
 
-                    # Check if customer already exists
-                    if "already exist" in error_msg.lower():
-                        skipped_count += 1
-                        errors.append(f"{user.email}: Embedly customer already exists but customer_id not in database. Please manually retrieve customer_id from Embedly and update user.embedly_customer_id")
+                        # Check if customer already exists
+                        if "already exist" in error_msg.lower():
+                            skipped_count += 1
+                            errors.append(f"{user.email}: Embedly customer already exists but customer_id not in database. Please manually retrieve customer_id from Embedly and update user.embedly_customer_id")
+                            continue
+
+                        failed_count += 1
+                        errors.append(f"{user.email}: {error_msg}")
                         continue
 
-                    failed_count += 1
-                    errors.append(f"{user.email}: {error_msg}")
-                    continue
+                    customer_id = customer_result["data"]["id"]
 
-                customer_id = customer_result["data"]["id"]
+                    # Save customer_id to user
+                    user.embedly_customer_id = customer_id
+                    user.save(update_fields=['embedly_customer_id'])
 
                 # Step 2: Upgrade KYC with BVN (if available)
                 if user.bvn:
