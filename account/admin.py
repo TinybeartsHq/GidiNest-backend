@@ -464,24 +464,7 @@ class UserAdmin(BaseUserAdmin):
                     errors.append(f"{user.email}: Missing phone number (required by Embedly)")
                     continue
 
-                # Format DOB for Embedly (they expect: "1999-10-27T09")
-                dob = user.bvn_dob if user.bvn_dob else user.dob
-                if dob:
-                    if isinstance(dob, str):
-                        # Parse string date
-                        try:
-                            from dateutil import parser
-                            dob_obj = parser.parse(dob)
-                            formatted_dob = dob_obj.strftime('%Y-%m-%dT09')
-                        except:
-                            formatted_dob = None
-                    elif hasattr(dob, 'strftime'):
-                        formatted_dob = dob.strftime('%Y-%m-%dT09')
-                    else:
-                        formatted_dob = None
-                else:
-                    formatted_dob = None
-
+                # Prepare customer payload with all available fields
                 customer_payload = {
                     "firstName": first_name,
                     "lastName": last_name,
@@ -489,11 +472,21 @@ class UserAdmin(BaseUserAdmin):
                     "mobileNumber": phone,
                 }
 
-                if formatted_dob:
-                    customer_payload["dob"] = formatted_dob
+                # Add optional fields if available
+                if user.dob:
+                    customer_payload["dob"] = str(user.dob) if hasattr(user.dob, 'strftime') else user.dob
 
-                # Create customer
-                customer_result = embedly_client.create_customer(payload=customer_payload)
+                if user.address:
+                    customer_payload["address"] = user.address
+
+                if user.state:
+                    customer_payload["city"] = user.state
+
+                if user.country:
+                    customer_payload["country"] = user.country
+
+                # Create customer (pass dict directly, not as named parameter)
+                customer_result = embedly_client.create_customer(customer_payload)
 
                 if not customer_result.get("success"):
                     error_msg = customer_result.get("message", "Failed to create customer")
