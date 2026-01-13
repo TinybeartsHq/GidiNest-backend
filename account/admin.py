@@ -490,6 +490,13 @@ class UserAdmin(BaseUserAdmin):
 
                 if not customer_result.get("success"):
                     error_msg = customer_result.get("message", "Failed to create customer")
+
+                    # Check if customer already exists
+                    if "already exist" in error_msg.lower():
+                        skipped_count += 1
+                        errors.append(f"{user.email}: Embedly customer already exists but customer_id not in database. Please manually retrieve customer_id from Embedly and update user.embedly_customer_id")
+                        continue
+
                     failed_count += 1
                     errors.append(f"{user.email}: {error_msg}")
                     continue
