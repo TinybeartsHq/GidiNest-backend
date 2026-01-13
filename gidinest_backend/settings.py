@@ -28,15 +28,11 @@ SECRET_KEY = os.getenv('SECRET_KEY', config('SECRET_KEY'))
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv('DEBUG', config('DEBUG', default=False, cast=bool))
 
-# Test mode - allows duplicate BVN/NIN for testing without enabling DEBUG
-TEST_MODE = os.getenv('TEST_MODE', config('TEST_MODE', default=False, cast=bool))
-
 ALLOWED_HOSTS = [
     "api.gidinest.com",
     "app.gidinest.com",
     "gidinest.com",
     "www.gidinest.com",
-    "staging.gidinest.com",
     "localhost",
     "127.0.0.1",
     "192.168.8.2",
@@ -191,16 +187,8 @@ ZEPTOMAIL_FROM_EMAIL = "noreply@gidinest.com"
 
 
 PREMBLY_API_KEY=os.getenv('PREMBLY_API_KEY', config('PREMBLY_API_KEY'))
-PREMBLY_APP_ID=os.getenv('PREMBLY_APP_ID', config('PREMBLY_APP_ID', default=''))
 
 
-# 9PSB (9 Payment Service Bank) Configuration - V2 Wallet Provider
-PSB9_USERNAME = os.getenv('PSB9_USERNAME', config('PSB9_USERNAME', default=''))
-PSB9_PASSWORD = os.getenv('PSB9_PASSWORD', config('PSB9_PASSWORD', default=''))
-PSB9_CLIENT_ID = os.getenv('PSB9_CLIENT_ID', config('PSB9_CLIENT_ID', default=''))
-PSB9_CLIENT_SECRET = os.getenv('PSB9_CLIENT_SECRET', config('PSB9_CLIENT_SECRET', default=''))
-PSB9_BASE_URL = os.getenv('PSB9_BASE_URL', config('PSB9_BASE_URL', default='http://102.216.128.75:9090'))
-PSB9_MERCHANT_ID = os.getenv('PSB9_MERCHANT_ID', config('PSB9_MERCHANT_ID', default=''))
 
 
 CORS_ALLOW_ALL_ORIGINS = False
@@ -209,7 +197,6 @@ CORS_ALLOWED_ORIGINS = [
     "https://www.gidinest.com",
     "https://app.gidinest.com",
     "https://api.gidinest.com",
-    "https://staging.gidinest.com",
     # Local development URLs
     "http://localhost:3000",
     "http://localhost:3001",
@@ -267,9 +254,6 @@ REST_FRAMEWORK = {
         'rest_framework.filters.SearchFilter', # Enable search globally
         'rest_framework.filters.OrderingFilter', # Enable ordering globally
     ],
-
-    # Custom exception handler for consistent error format
-    'EXCEPTION_HANDLER': 'core.helpers.exceptions.custom_exception_handler',
 
     # drf-spectacular settings for OpenAPI schema generation
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
@@ -426,11 +410,10 @@ EMBEDLY_API_KEY_DEV=os.getenv('EMBEDLY_API_KEY_DEV', config('EMBEDLY_API_KEY_DEV
 EMBEDLY_ORGANIZATION_ID_DEV=os.getenv('EMBEDLY_ORGANIZATION_ID_DEV', config('EMBEDLY_ORGANIZATION_ID_DEV')) 
 
 
-EMBEDLY_ORGANIZATION_ID_PRODUCTION=os.getenv('EMBEDLY_ORGANIZATION_ID_PRODUCTION', config('EMBEDLY_ORGANIZATION_ID_PRODUCTION'))
+EMBEDLY_ORGANIZATION_ID_PRODUCTION=os.getenv('EMBEDLY_ORGANIZATION_ID_PRODUCTION', config('EMBEDLY_ORGANIZATION_ID_PRODUCTION')) 
 EMBEDLY_API_KEY_PRODUCTION=os.getenv('EMBEDLY_API_KEY_PRODUCTION', config('EMBEDLY_API_KEY_PRODUCTION'))
-EMBEDLY_WEBHOOK_SECRET=os.getenv('EMBEDLY_WEBHOOK_SECRET', config('EMBEDLY_WEBHOOK_SECRET', default=''))
 EMBEDLY_CUSTOMER_TYPE_ID_INDIVIDUAL=os.getenv('EMBEDLY_CUSTOMER_TYPE_ID_INDIVIDUAL', config('EMBEDLY_CUSTOMER_TYPE_ID_INDIVIDUAL'))
-EMBEDLY_COUNTRY_ID_NIGERIA=os.getenv('EMBEDLY_COUNTRY_ID_NIGERIA', config('EMBEDLY_COUNTRY_ID_NIGERIA'))
+EMBEDLY_COUNTRY_ID_NIGERIA=os.getenv('EMBEDLY_COUNTRY_ID_NIGERIA', config('EMBEDLY_COUNTRY_ID_NIGERIA')) 
 EMBEDLY_CURRENCY_ID_NGN = config('EMBEDLY_CURRENCY_ID_NGN', default='')
 BASE_URL = os.getenv('BASE_URL', 'https://app.gidinest.com')
 CUORAL_API_KEY=os.getenv('CUORAL_API_KEY', config('CUORAL_API_KEY'))   

@@ -453,6 +453,17 @@ class UserAdmin(BaseUserAdmin):
                 last_name = user.bvn_last_name or user.last_name or ""
                 phone = user.bvn_phone or user.phone or ""
 
+                # Validate required fields
+                if not first_name or not last_name:
+                    failed_count += 1
+                    errors.append(f"{user.email}: Missing first name or last name (required by Embedly)")
+                    continue
+
+                if not phone:
+                    failed_count += 1
+                    errors.append(f"{user.email}: Missing phone number (required by Embedly)")
+                    continue
+
                 # Format DOB for Embedly (they expect: "1999-10-27T09")
                 dob = user.bvn_dob if user.bvn_dob else user.dob
                 if dob:
