@@ -972,6 +972,24 @@ class EmbedlyWebhookView(APIView):
                 secret_preview = f"{secret[:4]}...{secret[-4:]}" if len(secret) > 8 else "***"
                 secret_diagnostics.append(f"{secret_name}: {secret_preview} (len={len(secret)}) - tried SHA512 and SHA256")
 
+            # DETAILED LOGGING FOR DEBUGGING
+            logger.error("=" * 80)
+            logger.error("EMBEDLY WEBHOOK SIGNATURE MISMATCH - DETAILED DEBUG INFO")
+            logger.error("=" * 80)
+            logger.error(f"Provided signature: {provided_signature[:30]}..." if provided_signature else "No signature")
+            logger.error(f"Signature length: {len(provided_signature) if provided_signature else 0}")
+            logger.error(f"Body length: {len(raw_body)}")
+            logger.error(f"Body preview: {raw_body[:200]}")
+            logger.error(f"Secret used (preview): {secret_candidates[0][:10]}...{secret_candidates[0][-10:]} (len={len(secret_candidates[0])})")
+
+            # Generate test signatures for debugging
+            body_bytes = raw_body.encode('utf-8')
+            test_sha512 = hmac.new(secret_candidates[0].encode('utf-8'), body_bytes, hashlib.sha512).hexdigest()
+            test_sha256 = hmac.new(secret_candidates[0].encode('utf-8'), body_bytes, hashlib.sha256).hexdigest()
+            logger.error(f"Expected SHA-512: {test_sha512[:30]}...")
+            logger.error(f"Expected SHA-256: {test_sha256[:30]}...")
+            logger.error("=" * 80)
+
             logger.warning(
                 "Embedly deposit webhook signature mismatch",
                 extra={

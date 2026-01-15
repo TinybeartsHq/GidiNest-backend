@@ -101,33 +101,47 @@ class Wallet(models.Model):
         """Deposits funds into the wallet in a transaction-safe way."""
         if amount <= 0:
             raise ValueError("Deposit amount must be positive.")
-        
+
         # Start a database transaction
         with transaction.atomic():
             # Lock the row to prevent other operations on the same wallet
             wallet = Wallet.objects.select_for_update().get(id=self.id)
-            
+
             # Update balance atomically
             wallet.balance = F('balance') + amount
             wallet.save(update_fields=['balance', 'updated_at'])
+
+            # Refresh the instance to get the actual balance value
+            # (after F() expression, the balance field contains an expression object, not a number)
+            wallet.refresh_from_db()
+
+            # Update self to reflect the new balance
+            self.balance = wallet.balance
 
     def withdraw(self, amount):
         """Withdraws funds from the wallet in a transaction-safe way."""
         if amount <= 0:
             raise ValueError("Withdrawal amount must be positive.")
-        
+
         # Start a database transaction
         with transaction.atomic():
             # Lock the row to prevent other operations on the same wallet
             wallet = Wallet.objects.select_for_update().get(id=self.id)
-            
+
             # Check if sufficient funds are available
             if wallet.balance < amount:
                 raise ValueError("Insufficient funds in wallet.")
-            
+
             # Update balance atomically
             wallet.balance = F('balance') - amount
             wallet.save(update_fields=['balance', 'updated_at'])
+
+            # Refresh the instance to get the actual balance value
+            # (after F() expression, the balance field contains an expression object, not a number)
+            wallet.refresh_from_db()
+
+            # Update self to reflect the new balance
+            self.balance = wallet.balance
 
  
 

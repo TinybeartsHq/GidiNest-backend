@@ -99,7 +99,7 @@ sudo journalctl -u gunicorn -n 50 --no-pager
 ### 3. Verify Deployment
 ```bash
 # Test basic endpoint
-curl https://api.gidinest.com/api/v2/wallet/9psb/banks \
+curl https://app.gidinest.com/api/v2/wallet/9psb/banks \
   -H "Authorization: Bearer {your_token}"
 
 # Should return list of banks
@@ -112,7 +112,7 @@ curl https://api.gidinest.com/api/v2/wallet/9psb/banks \
 ### Prerequisites
 1. **Get Test User Token:**
 ```bash
-POST https://api.gidinest.com/api/v2/auth/signin
+POST https://app.gidinest.com/api/v2/auth/signin
 {
   "email": "iyoroebiperre@gmail.com",
   "password": "your_password"
@@ -146,7 +146,7 @@ POST /api/v2/kyc/bvn/confirm
 
 ### Test Case 3: Wallet Enquiry
 ```bash
-GET https://api.gidinest.com/api/v2/wallet/9psb/enquiry
+GET https://app.gidinest.com/api/v2/wallet/9psb/enquiry
 Authorization: Bearer {token}
 
 # Expected Response:
@@ -167,7 +167,7 @@ Authorization: Bearer {token}
 
 ### Test Case 4: Debit Wallet
 ```bash
-POST https://api.gidinest.com/api/v2/wallet/9psb/debit
+POST https://app.gidinest.com/api/v2/wallet/9psb/debit
 Authorization: Bearer {token}
 Content-Type: application/json
 
@@ -192,7 +192,7 @@ Content-Type: application/json
 
 ### Test Case 5: Credit Wallet (Admin Only)
 ```bash
-POST https://api.gidinest.com/api/v2/wallet/9psb/credit
+POST https://app.gidinest.com/api/v2/wallet/9psb/credit
 Authorization: Bearer {admin_token}
 Content-Type: application/json
 
@@ -207,7 +207,7 @@ Content-Type: application/json
 
 ### Test Case 14: Get Banks
 ```bash
-GET https://api.gidinest.com/api/v2/wallet/9psb/banks
+GET https://app.gidinest.com/api/v2/wallet/9psb/banks
 Authorization: Bearer {token}
 
 # Expected: List of Nigerian banks with codes
@@ -232,7 +232,7 @@ Authorization: Bearer {token}
 
 ### Test Case 6: Other Banks Account Enquiry
 ```bash
-POST https://api.gidinest.com/api/v2/wallet/9psb/banks/enquiry
+POST https://app.gidinest.com/api/v2/wallet/9psb/banks/enquiry
 Authorization: Bearer {token}
 Content-Type: application/json
 
@@ -256,7 +256,7 @@ Content-Type: application/json
 
 ### Test Case 7: Other Banks Transfer
 ```bash
-POST https://api.gidinest.com/api/v2/wallet/9psb/transfer/banks
+POST https://app.gidinest.com/api/v2/wallet/9psb/transfer/banks
 Authorization: Bearer {token}
 Content-Type: application/json
 
@@ -285,7 +285,7 @@ Content-Type: application/json
 
 ### Test Case 8: Transaction History
 ```bash
-GET https://api.gidinest.com/api/v2/wallet/9psb/transactions?start_date=2025-01-01&end_date=2025-12-31
+GET https://app.gidinest.com/api/v2/wallet/9psb/transactions?start_date=2025-01-01&end_date=2025-12-31
 Authorization: Bearer {token}
 
 # Expected: List of transactions
@@ -309,7 +309,7 @@ Authorization: Bearer {token}
 
 ### Test Case 11: Transaction Requery
 ```bash
-POST https://api.gidinest.com/api/v2/wallet/9psb/transactions/requery
+POST https://app.gidinest.com/api/v2/wallet/9psb/transactions/requery
 Authorization: Bearer {token}
 Content-Type: application/json
 
@@ -333,7 +333,7 @@ Content-Type: application/json
 
 ### Test Case 9: Wallet Status
 ```bash
-GET https://api.gidinest.com/api/v2/wallet/9psb/status
+GET https://app.gidinest.com/api/v2/wallet/9psb/status
 Authorization: Bearer {token}
 
 # Expected:
@@ -351,7 +351,7 @@ Authorization: Bearer {token}
 
 ### Test Case 10: Change Wallet Status (Admin Only)
 ```bash
-POST https://api.gidinest.com/api/v2/wallet/9psb/status/change
+POST https://app.gidinest.com/api/v2/wallet/9psb/status/change
 Authorization: Bearer {admin_token}
 Content-Type: application/json
 
@@ -375,7 +375,7 @@ Content-Type: application/json
 
 1. **Go to Django Admin:**
    ```
-   https://api.gidinest.com/internal-admin/
+   https://app.gidinest.com/internal-admin/
    ```
 
 2. **Select Users with Issues:**
