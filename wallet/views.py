@@ -910,13 +910,10 @@ class EmbedlyWebhookView(APIView):
             })
             return JsonResponse({'error': 'Missing signature'}, status=400)
         
-        # Try multiple possible secrets - Embedly uses API key as webhook secret (per their docs)
-        # Prioritize API key first, then fallback to other possible secrets
+        # Embedly uses API key as webhook secret (confirmed by Embedly support)
+        # Use production key only
         secret_candidates = [
             getattr(settings, 'EMBEDLY_API_KEY_PRODUCTION', None),
-            getattr(settings, 'EMBEDLY_WEBHOOK_SECRET', None),
-            getattr(settings, 'EMBEDLY_WEBHOOK_KEY', None),
-            getattr(settings, 'EMBEDLY_ORGANIZATION_ID_PRODUCTION', None),  # Some providers use org ID
         ]
         secret_candidates = [s for s in secret_candidates if s]
         
@@ -925,34 +922,61 @@ class EmbedlyWebhookView(APIView):
             return JsonResponse({'error': 'Webhook secret not configured'}, status=500)
 
         def _matches(sig: str, secret: str, secret_name: str = "unknown") -> tuple:
-            # Embedly uses SHA-512 with API key as secret (per their documentation)
             # Handle different signature formats:
-            # - "sha512=hexdigest" or "sha512:hexdigest"
-            # - Just the hexdigest (most common)
+            # - "sha512=hexdigest" or "sha256=hexdigest"
+            # - Just the hexdigest
             normalized = sig.split('=')[-1].split(':')[-1].strip().lower()
             body_bytes = raw_body.encode('utf-8')
 
-            # Try SHA-512 first (Embedly's documented algorithm), then SHA-256 for backward compatibility
+            # Method 1: HMAC with body (standard webhook signing)
             for algo_name, algo in [('sha512', hashlib.sha512), ('sha256', hashlib.sha256)]:
                 try:
                     digest = hmac.new(secret.encode('utf-8'), body_bytes, algo).hexdigest().lower()
                     if hmac.compare_digest(digest, normalized):
-                        logger.info(f"Webhook signature verified using {algo_name.upper()} with {secret_name}")
-                        return True, algo_name, secret_name
+                        logger.info(f"Webhook signature verified using HMAC-{algo_name.upper()} with {secret_name}")
+                        return True, f"hmac-{algo_name}", secret_name
                 except Exception:
                     continue
+
+            # Method 2: HMAC with secret as both key and message (some providers do this)
+            for algo_name, algo in [('sha512', hashlib.sha512), ('sha256', hashlib.sha256)]:
+                try:
+                    digest = hmac.new(secret.encode('utf-8'), secret.encode('utf-8'), algo).hexdigest().lower()
+                    if hmac.compare_digest(digest, normalized):
+                        logger.info(f"Webhook signature verified using HMAC-{algo_name.upper()}(secret,secret) with {secret_name}")
+                        return True, f"hmac-{algo_name}-secret-only", secret_name
+                except Exception:
+                    continue
+
+            # Method 3: Simple hash of secret (as per their docs: "sha256(secret)")
+            for algo_name, algo in [('sha512', hashlib.sha512), ('sha256', hashlib.sha256)]:
+                try:
+                    digest = algo(secret.encode('utf-8')).hexdigest().lower()
+                    if hmac.compare_digest(digest, normalized):
+                        logger.info(f"Webhook signature verified using plain {algo_name.upper()}(secret) with {secret_name}")
+                        return True, f"plain-{algo_name}", secret_name
+                except Exception:
+                    continue
+
+            # Method 4: Hash of body only (unlikely but let's try)
+            for algo_name, algo in [('sha512', hashlib.sha512), ('sha256', hashlib.sha256)]:
+                try:
+                    digest = algo(body_bytes).hexdigest().lower()
+                    if hmac.compare_digest(digest, normalized):
+                        logger.info(f"Webhook signature verified using plain {algo_name.upper()}(body) with {secret_name}")
+                        return True, f"plain-{algo_name}-body", secret_name
+                except Exception:
+                    continue
+
             return False, None, None
 
         verified = False
         matched_algo = None
         matched_secret = None
 
-        # Prioritize API key (Embedly's documented secret for webhooks)
+        # Using production API key only (confirmed by Embedly support)
         secret_names = [
             'EMBEDLY_API_KEY_PRODUCTION',
-            'EMBEDLY_WEBHOOK_SECRET',
-            'EMBEDLY_WEBHOOK_KEY',
-            'EMBEDLY_ORGANIZATION_ID_PRODUCTION',
         ]
 
         for secret, secret_name in zip(secret_candidates, secret_names[:len(secret_candidates)]):
@@ -972,22 +996,26 @@ class EmbedlyWebhookView(APIView):
                 secret_preview = f"{secret[:4]}...{secret[-4:]}" if len(secret) > 8 else "***"
                 secret_diagnostics.append(f"{secret_name}: {secret_preview} (len={len(secret)}) - tried SHA512 and SHA256")
 
-            # DETAILED LOGGING FOR DEBUGGING
-            logger.error("=" * 80)
-            logger.error("EMBEDLY WEBHOOK SIGNATURE MISMATCH - DETAILED DEBUG INFO")
-            logger.error("=" * 80)
-            logger.error(f"Provided signature: {provided_signature[:30]}..." if provided_signature else "No signature")
-            logger.error(f"Signature length: {len(provided_signature) if provided_signature else 0}")
-            logger.error(f"Body length: {len(raw_body)}")
-            logger.error(f"Body preview: {raw_body[:200]}")
-            logger.error(f"Secret used (preview): {secret_candidates[0][:10]}...{secret_candidates[0][-10:]} (len={len(secret_candidates[0])})")
-
-            # Generate test signatures for debugging
+            # DETAILED LOGGING FOR DEBUGGING - Share this with Embedly support
             body_bytes = raw_body.encode('utf-8')
-            test_sha512 = hmac.new(secret_candidates[0].encode('utf-8'), body_bytes, hashlib.sha512).hexdigest()
-            test_sha256 = hmac.new(secret_candidates[0].encode('utf-8'), body_bytes, hashlib.sha256).hexdigest()
-            logger.error(f"Expected SHA-512: {test_sha512[:30]}...")
-            logger.error(f"Expected SHA-256: {test_sha256[:30]}...")
+            secret = secret_candidates[0]
+
+            logger.error("=" * 80)
+            logger.error("EMBEDLY WEBHOOK SIGNATURE MISMATCH - DEBUG INFO")
+            logger.error("=" * 80)
+            logger.error(f"PROVIDED SIGNATURE: {provided_signature}")
+            logger.error(f"Signature length: {len(provided_signature)} chars")
+            logger.error(f"Body length: {len(raw_body)} chars")
+            logger.error(f"RAW BODY: {raw_body}")
+            logger.error(f"API Key: {secret}")
+            logger.error("")
+            logger.error("=== OUR COMPUTED SIGNATURES ===")
+            logger.error(f"HMAC-SHA512(key, body): {hmac.new(secret.encode(), body_bytes, hashlib.sha512).hexdigest()}")
+            logger.error(f"HMAC-SHA256(key, body): {hmac.new(secret.encode(), body_bytes, hashlib.sha256).hexdigest()}")
+            logger.error(f"SHA512(secret): {hashlib.sha512(secret.encode()).hexdigest()}")
+            logger.error(f"SHA256(secret): {hashlib.sha256(secret.encode()).hexdigest()}")
+            logger.error(f"SHA512(body): {hashlib.sha512(body_bytes).hexdigest()}")
+            logger.error(f"SHA256(body): {hashlib.sha256(body_bytes).hexdigest()}")
             logger.error("=" * 80)
 
             logger.warning(
