@@ -41,6 +41,7 @@ ALLOWED_HOSTS = [
     "167.99.120.170",  # Your DigitalOcean server IP
     "172.20.10.7",   # Current local network IP for mobile testing
     "172.20.10.11",  # Previous local network IP for mobile testing
+    "192.168.100.57",
     "0.0.0.0",  # Development server
 ]
 

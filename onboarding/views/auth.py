@@ -71,7 +71,7 @@ class RegisterInitiateView(APIView):
                 # Direct Email Flow: Send OTP
                 otp = str(random.randint(100000, 999999))
                 print(otp)
-             
+
                 temp_data = RegisterTempData.objects.create(
                     email=email,
                     phone=phone,
@@ -79,14 +79,24 @@ class RegisterInitiateView(APIView):
                     last_name=last_name,
                     oauth_provider=oauth_provider,
                     otp = otp
-                ) 
+                )
                 session_id = str(temp_data.id)
 
+                # Send OTP via email
+                client = MailClient()
+                client.send_email(
+                    to_email=email,
+                    subject="Your Gidinest Verification Code",
+                    template_name="emails/otp.html",
+                    context={
+                        "user_name": first_name,
+                        "otp": otp,
+                        "year": timezone.now().year,
+                    },
+                    to_name=first_name
+                )
 
-                cuoral_client = CuoralAPI()
-                res = cuoral_client.send_sms(phone,f"Your verification OTP is {otp}")
-  
-                return success_response(data={"session_id": session_id},  message= "OTP sent to phone number")
+                return success_response(data={"session_id": session_id},  message= "OTP sent to email")
         return validation_error_response(serializer.errors)
 
 
