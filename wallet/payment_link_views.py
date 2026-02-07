@@ -103,9 +103,9 @@ class CreateEventPaymentLinkAPIView(APIView):
         except ObjectDoesNotExist:
             return error_response("You don't have a wallet yet. Please verify your BVN or NIN to activate your wallet.")
 
-        event_name = request.data.get('event_name')
+        event_name = request.data.get('event_name') or request.data.get('title')
         event_date = request.data.get('event_date')
-        event_description = request.data.get('event_description', '')
+        event_description = request.data.get('event_description') or request.data.get('description', '')
         target_amount = request.data.get('target_amount')
         link_to_goal = request.data.get('link_to_goal', False)
         goal_name = request.data.get('goal_name')
