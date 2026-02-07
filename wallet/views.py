@@ -38,6 +38,7 @@ import hashlib
 from django.http import JsonResponse, HttpResponseBadRequest
 from django.views.decorators.csrf import csrf_exempt
 from .models import Wallet, WalletTransaction
+from wallet.payment_link_helpers import process_payment_link_contribution, try_match_deposit_to_pending_contribution
 from django.conf import settings
 from django.utils.decorators import method_decorator
 from django.views import View
@@ -1100,7 +1101,31 @@ class EmbedlyWebhookView(APIView):
                 except Exception as deposit_error:
                     logger.error(f"Failed to deposit {amount} to wallet {wallet.account_number}: {str(deposit_error)}")
                     raise  # Re-raise to rollback the transaction
-                
+
+                # Check if this is a payment link contribution
+                is_payment_link_contribution = False
+                try:
+                    is_pl, payment_link = process_payment_link_contribution(
+                        reference=reference,
+                        wallet_transaction=wallet_transaction,
+                        sender_name=sender_name,
+                    )
+                    if is_pl:
+                        is_payment_link_contribution = True
+                        logger.info(f"Payment link contribution processed for reference {reference}, link={payment_link.token}")
+                except Exception as pl_error:
+                    logger.error(f"Failed to process payment link contribution for reference {reference}: {str(pl_error)}", exc_info=True)
+
+                # If no PL- reference matched, try to match against pending contributions
+                if not is_payment_link_contribution:
+                    try:
+                        matched, matched_link = try_match_deposit_to_pending_contribution(wallet_transaction)
+                        if matched:
+                            is_payment_link_contribution = True
+                            logger.info(f"Reverse-matched deposit {reference} to pending contribution for link={matched_link.token}")
+                    except Exception as match_error:
+                        logger.error(f"Failed reverse-match for deposit {reference}: {str(match_error)}", exc_info=True)
+
         except IntegrityError as e:
             logger.warning(f"IntegrityError for reference {reference}: {str(e)}")
             return JsonResponse({'error': 'Transaction with this reference has been processed'}, status=200)
@@ -1109,47 +1134,49 @@ class EmbedlyWebhookView(APIView):
             return JsonResponse({'error': 'Failed to process transaction'}, status=500)
 
         # Send notifications (non-blocking - don't fail webhook if notifications fail)
-        try:
-            # SMS notification
-            cuoral_client = CuoralAPI()
-            cuoral_client.send_sms(
-                wallet.user.phone,
-                f"You just received {wallet.currency} {amount} from {sender_name}."
-            )
-            logger.info(f"SMS notification sent to {wallet.user.phone}")
-        except Exception as sms_error:
-            logger.error(f"Failed to send SMS notification: {str(sms_error)}")
-
-        try:
-            # Email notification
-            emailclient = MailClient()
-            emailclient.send_email(
-                to_email=wallet.user.email,
-                subject="Credit Alert",
-                template_name="emails/credit.html",
-                context={
-                    "sender_name": sender_name,
-                    "amount": f"{wallet.currency} {amount}",
-                },
-                to_name=wallet.user.first_name
-            )
-            logger.info(f"Email notification sent to {wallet.user.email}")
-        except Exception as email_error:
-            logger.error(f"Failed to send email notification: {str(email_error)}")
-
-        try:
-            # Push notification (only if available)
-            if PUSH_NOTIFICATIONS_AVAILABLE:
-                send_push_notification_to_user(
-                    user=wallet.user,
-                    title="Credit Alert",
-                    message=f"You just received {wallet.currency} {amount} from {sender_name}."
+        # Skip generic notifications for payment link contributions (the helper sends its own)
+        if not is_payment_link_contribution:
+            try:
+                # SMS notification
+                cuoral_client = CuoralAPI()
+                cuoral_client.send_sms(
+                    wallet.user.phone,
+                    f"You just received {wallet.currency} {amount} from {sender_name}."
                 )
-                logger.info(f"Push notification sent to user {wallet.user.email}")
-            else:
-                logger.debug("Push notifications not available (Firebase not configured)")
-        except Exception as push_error:
-            logger.error(f"Failed to send push notification: {str(push_error)}")
+                logger.info(f"SMS notification sent to {wallet.user.phone}")
+            except Exception as sms_error:
+                logger.error(f"Failed to send SMS notification: {str(sms_error)}")
+
+            try:
+                # Email notification
+                emailclient = MailClient()
+                emailclient.send_email(
+                    to_email=wallet.user.email,
+                    subject="Credit Alert",
+                    template_name="emails/credit.html",
+                    context={
+                        "sender_name": sender_name,
+                        "amount": f"{wallet.currency} {amount}",
+                    },
+                    to_name=wallet.user.first_name
+                )
+                logger.info(f"Email notification sent to {wallet.user.email}")
+            except Exception as email_error:
+                logger.error(f"Failed to send email notification: {str(email_error)}")
+
+            try:
+                # Push notification (only if available)
+                if PUSH_NOTIFICATIONS_AVAILABLE:
+                    send_push_notification_to_user(
+                        user=wallet.user,
+                        title="Credit Alert",
+                        message=f"You just received {wallet.currency} {amount} from {sender_name}."
+                    )
+                    logger.info(f"Push notification sent to user {wallet.user.email}")
+                else:
+                    logger.debug("Push notifications not available (Firebase not configured)")
+            except Exception as push_error:
+                logger.error(f"Failed to send push notification: {str(push_error)}")
 
         # Return a success response
         return JsonResponse({

@@ -1,5 +1,6 @@
 # wallet/payment_link_views.py
-from decimal import Decimal
+import uuid
+from decimal import Decimal, InvalidOperation
 from django.utils import timezone
 from django.db import transaction
 from django.core.exceptions import ObjectDoesNotExist
@@ -10,6 +11,7 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 from core.helpers.response import success_response, error_response, validation_error_response
 from wallet.models import PaymentLink, PaymentLinkContribution
 from wallet.serializers import PaymentLinkSerializer, PaymentLinkPublicSerializer, PaymentLinkContributionSerializer
+from wallet.payment_link_helpers import try_match_contribution_to_deposit, _complete_contribution
 from savings.models import SavingsGoalModel
 
 
@@ -330,3 +332,99 @@ class DeletePaymentLinkAPIView(APIView):
 
         except PaymentLink.DoesNotExist:
             return error_response('Payment link not found', status_code=status.HTTP_404_NOT_FOUND)
+
+
+class ConfirmPaymentLinkContributionAPIView(APIView):
+    """
+    Contributor confirms they've made a bank transfer for a payment link.
+    Creates a pending contribution and tries to auto-match against recent deposits.
+    POST /api/v2/payment-links/{token}/confirm-payment
+    """
+    permission_classes = [AllowAny]
+
+    def post(self, request, token, *args, **kwargs):
+        import logging
+        logger = logging.getLogger(__name__)
+
+        # Find the payment link
+        try:
+            payment_link = PaymentLink.objects.select_related(
+                'savings_goal', 'user__wallet'
+            ).get(token=token)
+        except PaymentLink.DoesNotExist:
+            return error_response('Payment link not found', status_code=status.HTTP_404_NOT_FOUND)
+
+        # Validate link is usable
+        if not payment_link.is_active:
+            return error_response('This payment link is no longer active')
+        if payment_link.expires_at and timezone.now() > payment_link.expires_at:
+            return error_response('This payment link has expired')
+        if payment_link.one_time_use and payment_link.used:
+            return error_response('This payment link has already been used')
+
+        # Validate required fields
+        contributor_name = request.data.get('contributor_name')
+        amount = request.data.get('amount')
+
+        if not contributor_name:
+            return validation_error_response({'contributor_name': 'Contributor name is required'})
+        if not amount:
+            return validation_error_response({'amount': 'Amount is required'})
+
+        try:
+            amount = Decimal(str(amount))
+            if amount <= 0:
+                return validation_error_response({'amount': 'Amount must be greater than zero'})
+        except (InvalidOperation, ValueError):
+            return validation_error_response({'amount': 'Invalid amount'})
+
+        # Check fixed amount if applicable
+        if not payment_link.allow_custom_amount and payment_link.fixed_amount:
+            if amount != payment_link.fixed_amount:
+                return validation_error_response({
+                    'amount': f'This payment link requires exactly {payment_link.fixed_amount}'
+                })
+
+        # Optional fields
+        contributor_email = request.data.get('contributor_email', '')
+        contributor_phone = request.data.get('contributor_phone', '')
+        message = request.data.get('message', '')
+
+        # Create pending contribution
+        contribution = PaymentLinkContribution.objects.create(
+            payment_link=payment_link,
+            amount=amount,
+            status='pending',
+            contributor_name=contributor_name,
+            contributor_email=contributor_email or None,
+            contributor_phone=contributor_phone or None,
+            message=message or None,
+            external_reference=f"CONFIRM-{payment_link.token}-{uuid.uuid4().hex[:8]}"
+        )
+
+        # Try to auto-match against a recent deposit
+        matched_transaction = try_match_contribution_to_deposit(contribution)
+        if matched_transaction:
+            try:
+                _complete_contribution(contribution, matched_transaction)
+                logger.info(f"Auto-matched contribution {contribution.id} to deposit {matched_transaction.external_reference}")
+                return success_response(
+                    message="Payment confirmed and matched successfully!",
+                    data={
+                        'contribution_id': str(contribution.id),
+                        'status': 'completed',
+                        'amount': str(amount),
+                    }
+                )
+            except Exception as e:
+                logger.error(f"Failed to complete auto-matched contribution: {str(e)}", exc_info=True)
+
+        # No auto-match — stays pending, will be matched when deposit arrives
+        return success_response(
+            message="Payment confirmation received. We'll match it once the transfer arrives.",
+            data={
+                'contribution_id': str(contribution.id),
+                'status': 'pending',
+                'amount': str(amount),
+            }
+        )

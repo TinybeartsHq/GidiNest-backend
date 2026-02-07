@@ -14,6 +14,7 @@ from wallet.payment_link_views import (
     ListUserPaymentLinksAPIView,
     UpdatePaymentLinkAPIView,
     DeletePaymentLinkAPIView,
+    ConfirmPaymentLinkContributionAPIView,
 )
 from wallet.views_v2 import (
     WalletDetailAPIView,
@@ -47,6 +48,9 @@ urlpatterns = [
     path('payment-links/<str:token>/analytics', PaymentLinkAnalyticsAPIView.as_view(), name='v2-payment-link-analytics'),
     path('payment-links/<str:token>/update', UpdatePaymentLinkAPIView.as_view(), name='v2-update-payment-link'),
     path('payment-links/<str:token>/delete', DeletePaymentLinkAPIView.as_view(), name='v2-delete-payment-link'),
+
+    # Contributor confirms payment (public)
+    path('payment-links/<str:token>/confirm-payment', ConfirmPaymentLinkContributionAPIView.as_view(), name='v2-confirm-payment-link'),
 
     # Note: Webhooks remain in v1 as they're shared
     # Note: Banks list, account resolution, PIN management can be shared from v1

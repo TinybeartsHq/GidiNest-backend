@@ -17,6 +17,7 @@ from .models import Wallet, WalletTransaction, WithdrawalRequest
 from .serializers import WalletBalanceSerializer, WalletTransactionSerializer
 from savings.models import SavingsGoalModel
 from savings.serializers import SavingsGoalSerializer
+from wallet.payment_link_helpers import process_payment_link_contribution, try_match_deposit_to_pending_contribution
 
 # Optional push notification import
 try:
@@ -572,38 +573,75 @@ class PSB9WebhookView(APIView):
                     f"User: {wallet.user.email}, Amount: {amount_decimal}, Reference: {reference}"
                 )
 
-                # Send push notification to user
+                # Check if this is a payment link contribution
+                is_payment_link_contribution = False
                 try:
-                    if PUSH_NOTIFICATIONS_AVAILABLE:
-                        send_push_notification_to_user(
+                    is_pl, payment_link = process_payment_link_contribution(
+                        reference=reference,
+                        wallet_transaction=wallet_transaction,
+                        sender_name=sender_name,
+                        narration=narration,
+                    )
+                    if is_pl:
+                        is_payment_link_contribution = True
+                        logger.info(
+                            f"9PSB: Payment link contribution processed. "
+                            f"Reference: {reference}, Payment Link: {payment_link.token}"
+                        )
+                except Exception as pl_error:
+                    logger.error(
+                        f"9PSB: Failed to process payment link contribution. "
+                        f"Reference: {reference}, Narration: {narration}, Error: {str(pl_error)}",
+                        exc_info=True
+                    )
+
+                # If no PL- reference matched, try to match against pending contributions
+                if not is_payment_link_contribution:
+                    try:
+                        matched, matched_link = try_match_deposit_to_pending_contribution(wallet_transaction)
+                        if matched:
+                            is_payment_link_contribution = True
+                            logger.info(
+                                f"9PSB: Reverse-matched deposit {reference} to pending contribution "
+                                f"for link={matched_link.token}"
+                            )
+                    except Exception as match_error:
+                        logger.error(f"9PSB: Failed reverse-match for deposit {reference}: {str(match_error)}", exc_info=True)
+
+                # Send notifications (skip generic ones for payment link contributions)
+                if not is_payment_link_contribution:
+                    # Send push notification to user
+                    try:
+                        if PUSH_NOTIFICATIONS_AVAILABLE:
+                            send_push_notification_to_user(
+                                user=wallet.user,
+                                title="Deposit Received",
+                                body=f"Your wallet has been credited with ₦{amount_decimal:,.2f}",
+                                data={
+                                    'type': 'wallet_credit',
+                                    'amount': str(amount_decimal),
+                                    'reference': reference
+                                }
+                            )
+                    except Exception as e:
+                        logger.warning(f"9PSB webhook: Failed to send push notification: {e}")
+
+                    # Send in-app notification
+                    try:
+                        from notification.models import Notification
+                        Notification.objects.create(
                             user=wallet.user,
                             title="Deposit Received",
-                            body=f"Your wallet has been credited with ₦{amount_decimal:,.2f}",
+                            message=f"Your wallet has been credited with ₦{amount_decimal:,.2f}",
+                            notification_type='wallet_credit',
                             data={
-                                'type': 'wallet_credit',
                                 'amount': str(amount_decimal),
-                                'reference': reference
+                                'reference': reference,
+                                'transaction_id': str(wallet_transaction.id)
                             }
                         )
-                except Exception as e:
-                    logger.warning(f"9PSB webhook: Failed to send push notification: {e}")
-
-                # Send in-app notification
-                try:
-                    from notification.models import Notification
-                    Notification.objects.create(
-                        user=wallet.user,
-                        title="Deposit Received",
-                        message=f"Your wallet has been credited with ₦{amount_decimal:,.2f}",
-                        notification_type='wallet_credit',
-                        data={
-                            'amount': str(amount_decimal),
-                            'reference': reference,
-                            'transaction_id': str(wallet_transaction.id)
-                        }
-                    )
-                except Exception as e:
-                    logger.warning(f"9PSB webhook: Failed to create in-app notification: {e}")
+                    except Exception as e:
+                        logger.warning(f"9PSB webhook: Failed to create in-app notification: {e}")
 
                 return success_response(
                     message="Deposit processed successfully",

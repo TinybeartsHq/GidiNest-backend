@@ -1,4 +1,5 @@
 # wallet/payment_link_helpers.py
+import re
 import logging
 from decimal import Decimal
 from django.db import transaction
@@ -8,38 +9,75 @@ from savings.models import SavingsGoalTransaction
 logger = logging.getLogger(__name__)
 
 
-def process_payment_link_contribution(reference, wallet_transaction, sender_name=None):
+def _extract_pl_identifier(reference, narration=None):
+    """
+    Find a PL-{token}-{timestamp} identifier in the narration or reference.
+    Returns the identifier string or None.
+    Priority: narration (user-typed) > reference (system-generated).
+    """
+    # Check narration first — this is what the contributor types
+    if narration:
+        for segment in narration.split():
+            if segment.startswith('PL-'):
+                return segment
+    # Fall back to reference (system-generated, less likely to contain PL-)
+    if reference and reference.startswith('PL-'):
+        return reference
+    return None
+
+
+def _extract_token_from_identifier(pl_identifier):
+    """
+    Extract the PaymentLink token from a PL-{token}-{timestamp} identifier.
+    Handles tokens that may contain dashes (from secrets.token_urlsafe).
+    """
+    stripped = pl_identifier[3:]  # Remove "PL-" prefix
+    # Timestamp is a trailing segment of 8+ digits after the last dash
+    match = re.match(r'^(.+)-(\d{8,})$', stripped)
+    if match:
+        return match.group(1)
+    # No timestamp suffix — treat entire remainder as token
+    return stripped if stripped else None
+
+
+def process_payment_link_contribution(reference, wallet_transaction, sender_name=None, narration=None):
     """
     Check if a transaction is linked to a payment link and process accordingly.
 
     Args:
-        reference: Payment reference from webhook
+        reference: Payment reference from webhook (system-generated)
         wallet_transaction: The WalletTransaction object created
         sender_name: Name of the sender (contributor)
+        narration: Transfer narration/remark from webhook (user-typed, may contain PL- code)
 
     Returns:
         tuple: (is_payment_link, payment_link_object or None)
     """
-    # Payment links use a custom reference format: "PL-{token}-{timestamp}"
-    # Check if reference starts with "PL-"
-    if not reference or not reference.startswith('PL-'):
+    # Look for a PL- identifier in narration or reference
+    pl_identifier = _extract_pl_identifier(reference, narration)
+    if not pl_identifier:
         return (False, None)
 
     try:
-        # Extract token from reference
-        # Format: PL-{token}-{optional_timestamp}
-        parts = reference.split('-')
-        if len(parts) < 2:
-            logger.warning(f"Invalid payment link reference format: {reference}")
+        # Extract token from PL-{token}-{timestamp} format
+        token = _extract_token_from_identifier(pl_identifier)
+        if not token:
+            logger.warning(f"Could not extract token from payment link identifier: {pl_identifier}")
             return (False, None)
-
-        token = parts[1]  # Token is the second part
 
         # Find payment link by token
         try:
             payment_link = PaymentLink.objects.select_related('savings_goal', 'user__wallet').get(token=token)
         except PaymentLink.DoesNotExist:
             logger.warning(f"Payment link not found for token: {token}")
+            return (False, None)
+
+        # Verify the payment link belongs to the wallet owner
+        if payment_link.user_id != wallet_transaction.wallet.user_id:
+            logger.warning(
+                f"Payment link token {token} belongs to user {payment_link.user_id} "
+                f"but transaction is for wallet user {wallet_transaction.wallet.user_id}. Skipping."
+            )
             return (False, None)
 
         # Check if link is still active
@@ -61,13 +99,14 @@ def process_payment_link_contribution(reference, wallet_transaction, sender_name
         # Process the contribution
         with transaction.atomic():
             # Create contribution record
+            # Use the bank reference as external_reference for audit/deduplication
             contribution = PaymentLinkContribution.objects.create(
                 payment_link=payment_link,
                 amount=wallet_transaction.amount,
                 status='completed',
                 wallet_transaction=wallet_transaction,
                 contributor_name=sender_name,
-                external_reference=reference
+                external_reference=reference or pl_identifier
             )
 
             # If payment link is for a savings goal, credit the goal
@@ -128,7 +167,7 @@ def process_payment_link_contribution(reference, wallet_transaction, sender_name
             except Exception as e:
                 logger.error(f"Failed to send payment link notifications: {str(e)}")
 
-        logger.info(f"Successfully processed payment link contribution: {reference}")
+        logger.info(f"Successfully processed payment link contribution: {pl_identifier} (ref: {reference})")
         return (True, payment_link)
 
     except Exception as e:
@@ -247,3 +286,151 @@ def generate_payment_reference(payment_link):
     import time
     timestamp = int(time.time())
     return f"PL-{payment_link.token}-{timestamp}"
+
+
+def _complete_contribution(contribution, wallet_transaction):
+    """
+    Complete a pending contribution: link it to the wallet transaction,
+    route money to savings goal if applicable, and send notifications.
+    """
+    payment_link = contribution.payment_link
+    sender_name = contribution.contributor_name
+
+    with transaction.atomic():
+        contribution.status = 'completed'
+        contribution.wallet_transaction = wallet_transaction
+        contribution.save(update_fields=['status', 'wallet_transaction', 'updated_at'])
+
+        # Route money to savings goal if applicable
+        if payment_link.link_type == 'savings_goal' and payment_link.savings_goal:
+            goal = payment_link.savings_goal
+            goal.amount += contribution.amount
+            goal.save(update_fields=['amount', 'updated_at'])
+
+            SavingsGoalTransaction.objects.create(
+                goal=goal,
+                transaction_type='contribution',
+                amount=contribution.amount,
+                description=f"Contribution from {sender_name or 'Anonymous'} via payment link",
+                goal_current_amount=goal.amount
+            )
+
+            wallet = payment_link.user.wallet
+            wallet.withdraw(contribution.amount)
+            logger.info(f"Credited {contribution.amount} to savings goal {goal.name}")
+
+        elif payment_link.link_type == 'event' and payment_link.savings_goal:
+            goal = payment_link.savings_goal
+            goal.amount += contribution.amount
+            goal.save(update_fields=['amount', 'updated_at'])
+
+            SavingsGoalTransaction.objects.create(
+                goal=goal,
+                transaction_type='contribution',
+                amount=contribution.amount,
+                description=f"Contribution for {payment_link.event_name} from {sender_name or 'Anonymous'}",
+                goal_current_amount=goal.amount
+            )
+
+            wallet = payment_link.user.wallet
+            wallet.withdraw(contribution.amount)
+            logger.info(f"Credited {contribution.amount} to event goal {goal.name}")
+
+        else:
+            logger.info(f"Payment link contribution stays in wallet: {contribution.amount}")
+
+        # Mark as used if one-time use
+        if payment_link.one_time_use:
+            payment_link.used = True
+            payment_link.save(update_fields=['used'])
+
+    # Send notifications (outside atomic block — non-critical)
+    try:
+        _send_payment_link_notifications(payment_link, contribution, wallet_transaction)
+    except Exception as e:
+        logger.error(f"Failed to send payment link notifications: {str(e)}")
+
+
+def try_match_deposit_to_pending_contribution(wallet_transaction):
+    """
+    Called from webhooks when a deposit has no PL- reference.
+    Looks for a pending PaymentLinkContribution that matches by amount
+    and belongs to the wallet owner's active payment links.
+
+    Returns:
+        tuple: (matched, payment_link or None)
+    """
+    from datetime import timedelta
+    from django.utils import timezone
+
+    try:
+        wallet_user = wallet_transaction.wallet.user
+        amount = wallet_transaction.amount
+        # Only match contributions created in the last 2 hours
+        cutoff = timezone.now() - timedelta(hours=2)
+
+        pending = PaymentLinkContribution.objects.filter(
+            payment_link__user=wallet_user,
+            payment_link__is_active=True,
+            status='pending',
+            amount=amount,
+            created_at__gte=cutoff,
+        ).select_related('payment_link', 'payment_link__savings_goal', 'payment_link__user__wallet')
+
+        if pending.count() == 1:
+            contribution = pending.first()
+            _complete_contribution(contribution, wallet_transaction)
+            logger.info(
+                f"Auto-matched deposit {wallet_transaction.external_reference} "
+                f"to pending contribution {contribution.id}"
+            )
+            return (True, contribution.payment_link)
+        elif pending.count() > 1:
+            logger.info(
+                f"Multiple pending contributions match deposit amount {amount} "
+                f"for user {wallet_user.email}. Skipping auto-match."
+            )
+        return (False, None)
+
+    except Exception as e:
+        logger.error(f"Error in try_match_deposit_to_pending_contribution: {str(e)}", exc_info=True)
+        return (False, None)
+
+
+def try_match_contribution_to_deposit(contribution):
+    """
+    Called when a contributor confirms payment. Looks for a recent
+    unmatched deposit to the link owner's wallet with the same amount.
+
+    Returns:
+        WalletTransaction or None
+    """
+    from datetime import timedelta
+    from django.utils import timezone
+
+    try:
+        payment_link = contribution.payment_link
+        wallet = payment_link.user.wallet
+        amount = contribution.amount
+        # Look for deposits in the last 2 hours
+        cutoff = timezone.now() - timedelta(hours=2)
+
+        # Find credit transactions to this wallet that aren't already
+        # linked to a completed contribution
+        candidates = WalletTransaction.objects.filter(
+            wallet=wallet,
+            transaction_type='credit',
+            amount=amount,
+            created_at__gte=cutoff,
+        ).exclude(
+            payment_link_contributions__status='completed'
+        ).order_by('-created_at')
+
+        if candidates.count() == 1:
+            return candidates.first()
+        # If multiple matches, don't auto-match (ambiguous)
+        return None
+
+    except Exception as e:
+        logger.error(f"Error in try_match_contribution_to_deposit: {str(e)}", exc_info=True)
+        return None
