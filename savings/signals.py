@@ -1,7 +1,10 @@
+import logging
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.conf import settings
 from .models import SavingsGoalModel
+
+logger = logging.getLogger(__name__)
 
 
 @receiver(post_save, sender=settings.AUTH_USER_MODEL)
@@ -20,4 +23,4 @@ def create_default_savings_goal(sender, instance, created, **kwargs):
                     amount=0.00,   
                     status='active'
                 )
-                print(f"Created default savings goal for new user: {instance.email}")
+                logger.info(f"Created default savings goal for new user: {instance.email}")

@@ -644,4 +644,4 @@ class CreateWalletView(APIView):
             return success_response(response_data)
 
         except Exception as e:
-            return error_response(f"An error occurred while creating your wallet: {str(e)}")
+            return error_response("An error occurred while creating your wallet. Please try again.")

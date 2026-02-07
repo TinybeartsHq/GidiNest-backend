@@ -161,7 +161,7 @@ class WithdrawalRequest(models.Model):
     account_number = models.CharField(max_length=255)
     bank_account_name = models.CharField(max_length=255, null=True)
     status = models.CharField(choices=STATUS_CHOICES, max_length=20, default='pending')
-    transaction_ref = models.CharField(max_length=255, null=True, blank=True, help_text="Embedly transaction reference")
+    transaction_ref = models.CharField(max_length=255, null=True, blank=True, unique=True, help_text="Embedly transaction reference")
     error_message = models.TextField(null=True, blank=True, help_text="Error message if transfer failed")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -222,6 +222,26 @@ class WalletTransaction(BaseModel):
         null=True,
         unique=True,
         help_text="Reference from external system"
+    )
+
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('completed', 'Completed'),
+        ('failed', 'Failed'),
+    ]
+
+    reference = models.CharField(
+        max_length=255,
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text="Internal transaction reference (e.g., DEB_, CRD_, TRF_ prefixed IDs)"
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default='completed',
+        help_text="Transaction status"
     )
 
     class Meta:

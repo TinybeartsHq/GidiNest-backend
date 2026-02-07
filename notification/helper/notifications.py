@@ -2,9 +2,12 @@
 """
 Helper functions for creating and sending notifications
 """
+import logging
 from typing import Dict, Optional
 from django.conf import settings
 from notification.models import Notification
+
+logger = logging.getLogger(__name__)
 
 # Optional push notification import
 try:
@@ -61,7 +64,7 @@ def create_notification(
             )
         except Exception as e:
             # Don't fail if push notification fails
-            print(f"Failed to send push notification: {e}")
+            logger.error(f"Failed to send push notification: {e}")
 
     return notification
 

@@ -1,11 +1,10 @@
 from django.contrib.auth import get_user_model
-import random
+import secrets
 
 
 class EmailAuthBackend:
     def authenticate(self, request, email=None, password=None):
         user_model = get_user_model()
-        print(user_model)
         try:
             user = user_model.objects.get(email=email)
             if user.check_password(password):
@@ -23,6 +22,6 @@ class EmailAuthBackend:
 
 
 def generate_otp():
-    # Generate a 6-digit random OTP
-    otp = f"{random.randint(100000, 999999)}"
+    # Generate a cryptographically secure 6-digit OTP
+    otp = str(secrets.randbelow(900000) + 100000)
     return otp

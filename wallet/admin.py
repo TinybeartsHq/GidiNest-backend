@@ -50,13 +50,16 @@ class WalletTransactionAdmin(admin.ModelAdmin):
         'wallet_account_number',
         'transaction_type',
         'amount',
+        'status',
+        'reference',
+        'external_reference',
         'description',
         'sender_name',
         'sender_account',
         'created_at',
     )
-    search_fields = ('wallet__account_number', 'sender_name', 'sender_account')
-    list_filter = ('transaction_type', 'created_at')
+    search_fields = ('wallet__account_number', 'sender_name', 'sender_account', 'reference', 'external_reference')
+    list_filter = ('transaction_type', 'status', 'created_at')
     readonly_fields = ('created_at',)
 
     def wallet_account_number(self, obj):

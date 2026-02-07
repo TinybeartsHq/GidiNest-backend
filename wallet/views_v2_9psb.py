@@ -10,7 +10,7 @@ from rest_framework import status
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
-from django.db import transaction as db_transaction
+from django.db import IntegrityError, transaction as db_transaction
 from django.utils import timezone
 
 from core.helpers.response import success_response, validation_error_response, error_response
@@ -102,7 +102,7 @@ class DebitWalletAPIView(APIView):
             amount_decimal = Decimal(str(amount))
             if amount_decimal <= 0:
                 return validation_error_response({"amount": ["Amount must be greater than 0"]})
-        except:
+        except (ValueError, TypeError, Exception):
             return validation_error_response({"amount": ["Invalid amount format"]})
 
         try:
@@ -127,35 +127,42 @@ class DebitWalletAPIView(APIView):
             psb9_client = PSB9Client()
             result = psb9_client.debit_wallet(
                 account_number=wallet.psb9_account_number,
-                amount=float(amount_decimal),
+                amount=str(amount_decimal),
                 transaction_id=transaction_id,
                 narration=narration
             )
 
             if result.get("status") == "success":
-                with db_transaction.atomic():
-                    # Update wallet balance
-                    wallet.balance -= amount_decimal
-                    wallet.save()
+                try:
+                    with db_transaction.atomic():
+                        # Update wallet balance atomically
+                        wallet.withdraw(amount_decimal)
 
-                    # Create transaction record
-                    wallet_transaction = WalletTransaction.objects.create(
-                        wallet=wallet,
-                        transaction_type='debit',
-                        amount=amount_decimal,
-                        description=narration,
-                        reference=transaction_id,
-                        status='completed'
-                    )
+                        # Create transaction record
+                        wallet_transaction = WalletTransaction.objects.create(
+                            wallet=wallet,
+                            transaction_type='debit',
+                            amount=amount_decimal,
+                            description=narration,
+                            reference=transaction_id,
+                            external_reference=transaction_id,
+                            status='completed'
+                        )
 
+                        return success_response(
+                            message="Debit successful",
+                            data={
+                                "transaction_id": transaction_id,
+                                "amount": str(amount_decimal),
+                                "new_balance": str(wallet.balance),
+                                "reference": str(wallet_transaction.id)
+                            }
+                        )
+                except IntegrityError:
+                    logger.warning(f"Duplicate debit transaction: {transaction_id}")
                     return success_response(
-                        message="Debit successful",
-                        data={
-                            "transaction_id": transaction_id,
-                            "amount": str(amount_decimal),
-                            "new_balance": str(wallet.balance),
-                            "reference": str(wallet_transaction.id)
-                        }
+                        message="Transaction already processed",
+                        data={"transaction_id": transaction_id}
                     )
             else:
                 return error_response(
@@ -207,7 +214,7 @@ class CreditWalletAPIView(APIView):
             amount_decimal = Decimal(str(amount))
             if amount_decimal <= 0:
                 return validation_error_response({"amount": ["Amount must be greater than 0"]})
-        except:
+        except (ValueError, TypeError, Exception):
             return validation_error_response({"amount": ["Invalid amount format"]})
 
         try:
@@ -220,35 +227,42 @@ class CreditWalletAPIView(APIView):
             psb9_client = PSB9Client()
             result = psb9_client.credit_wallet(
                 account_number=account_number,
-                amount=float(amount_decimal),
+                amount=str(amount_decimal),
                 transaction_id=transaction_id,
                 narration=narration
             )
 
             if result.get("status") == "success":
-                with db_transaction.atomic():
-                    # Update wallet balance
-                    wallet.balance += amount_decimal
-                    wallet.save()
+                try:
+                    with db_transaction.atomic():
+                        # Update wallet balance atomically
+                        wallet.deposit(amount_decimal)
 
-                    # Create transaction record
-                    wallet_transaction = WalletTransaction.objects.create(
-                        wallet=wallet,
-                        transaction_type='credit',
-                        amount=amount_decimal,
-                        description=narration,
-                        reference=transaction_id,
-                        status='completed'
-                    )
+                        # Create transaction record
+                        wallet_transaction = WalletTransaction.objects.create(
+                            wallet=wallet,
+                            transaction_type='credit',
+                            amount=amount_decimal,
+                            description=narration,
+                            reference=transaction_id,
+                            external_reference=transaction_id,
+                            status='completed'
+                        )
 
+                        return success_response(
+                            message="Credit successful",
+                            data={
+                                "transaction_id": transaction_id,
+                                "amount": str(amount_decimal),
+                                "new_balance": str(wallet.balance),
+                                "reference": str(wallet_transaction.id)
+                            }
+                        )
+                except IntegrityError:
+                    logger.warning(f"Duplicate credit transaction: {transaction_id}")
                     return success_response(
-                        message="Credit successful",
-                        data={
-                            "transaction_id": transaction_id,
-                            "amount": str(amount_decimal),
-                            "new_balance": str(wallet.balance),
-                            "reference": str(wallet_transaction.id)
-                        }
+                        message="Transaction already processed",
+                        data={"transaction_id": transaction_id}
                     )
             else:
                 return error_response(
@@ -379,7 +393,7 @@ class OtherBanksTransferAPIView(APIView):
             amount_decimal = Decimal(str(amount))
             if amount_decimal <= 0:
                 return validation_error_response({"amount": ["Amount must be greater than 0"]})
-        except:
+        except (ValueError, TypeError, Exception):
             return validation_error_response({"amount": ["Invalid amount format"]})
 
         try:
@@ -406,39 +420,46 @@ class OtherBanksTransferAPIView(APIView):
                 sender_account_number=wallet.psb9_account_number,
                 receiver_account_number=account_number,
                 bank_code=bank_code,
-                amount=float(amount_decimal),
+                amount=str(amount_decimal),
                 transaction_id=transaction_id,
                 narration=narration
             )
 
             if result.get("status") == "success":
-                with db_transaction.atomic():
-                    # Update wallet balance
-                    wallet.balance -= amount_decimal
-                    wallet.save()
+                try:
+                    with db_transaction.atomic():
+                        # Update wallet balance atomically
+                        wallet.withdraw(amount_decimal)
 
-                    # Create transaction record
-                    wallet_transaction = WalletTransaction.objects.create(
-                        wallet=wallet,
-                        transaction_type='debit',
-                        amount=amount_decimal,
-                        description=f"Transfer to {account_name} - {bank_code}",
-                        reference=transaction_id,
-                        sender_name=user.get_full_name(),
-                        sender_account=wallet.account_number,
-                        status='completed'
-                    )
+                        # Create transaction record
+                        wallet_transaction = WalletTransaction.objects.create(
+                            wallet=wallet,
+                            transaction_type='debit',
+                            amount=amount_decimal,
+                            description=f"Transfer to {account_name} - {bank_code}",
+                            reference=transaction_id,
+                            external_reference=transaction_id,
+                            sender_name=user.get_full_name(),
+                            sender_account=wallet.account_number,
+                            status='completed'
+                        )
 
+                        return success_response(
+                            message="Transfer successful",
+                            data={
+                                "transaction_id": transaction_id,
+                                "amount": str(amount_decimal),
+                                "recipient": account_name,
+                                "account_number": account_number,
+                                "new_balance": str(wallet.balance),
+                                "reference": str(wallet_transaction.id)
+                            }
+                        )
+                except IntegrityError:
+                    logger.warning(f"Duplicate transfer transaction: {transaction_id}")
                     return success_response(
-                        message="Transfer successful",
-                        data={
-                            "transaction_id": transaction_id,
-                            "amount": str(amount_decimal),
-                            "recipient": account_name,
-                            "account_number": account_number,
-                            "new_balance": str(wallet.balance),
-                            "reference": str(wallet_transaction.id)
-                        }
+                        message="Transaction already processed",
+                        data={"transaction_id": transaction_id}
                     )
             else:
                 return error_response(
@@ -1002,6 +1023,15 @@ class WalletUpgradeFileAPIView(APIView):
             errors['identity_number'] = ["Identity number is required"]
         if not utility_bill:
             errors['utility_bill'] = ["Utility bill file is required"]
+        else:
+            # Validate file size (max 5MB)
+            max_size = 5 * 1024 * 1024
+            if utility_bill.size > max_size:
+                errors['utility_bill'] = ["File size must not exceed 5MB"]
+            # Validate file type
+            allowed_types = ['image/jpeg', 'image/png', 'image/jpg', 'application/pdf']
+            if utility_bill.content_type not in allowed_types:
+                errors['utility_bill'] = ["File must be JPEG, PNG, or PDF"]
 
         if errors:
             return validation_error_response(errors)

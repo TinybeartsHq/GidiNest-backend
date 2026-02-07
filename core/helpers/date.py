@@ -29,7 +29,7 @@ def get_age_from_date(birth_date_str):
         
         return age
 
-    except:
+    except (ValueError, TypeError):
         return None
 
     

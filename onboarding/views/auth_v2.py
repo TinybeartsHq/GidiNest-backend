@@ -15,6 +15,9 @@ from django.utils import timezone
 from datetime import timedelta
 import hashlib
 
+from django.utils.decorators import method_decorator
+from django_ratelimit.decorators import ratelimit
+
 from account.models.users import UserModel
 from account.models.sessions import UserSession
 from account.serializers import UserProfileSerializer
@@ -135,6 +138,7 @@ class SignInView(APIView):
     """
     permission_classes = [AllowAny]
 
+    @method_decorator(ratelimit(key='ip', rate='10/h', method='POST', block=True))
     def post(self, request, *args, **kwargs):
         serializer = SignInSerializer(data=request.data)
         if serializer.is_valid():

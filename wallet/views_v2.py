@@ -318,7 +318,7 @@ class WalletWithdrawAPIView(APIView):
             return validation_error_response({'amount': 'Invalid amount format'})
 
         # Verify transaction PIN
-        if not request.user.check_transaction_pin(transaction_pin):
+        if not request.user.verify_transaction_pin(transaction_pin):
             return error_response(
                 message="Invalid transaction PIN",
                 status_code=status.HTTP_401_UNAUTHORIZED
@@ -353,9 +353,8 @@ class WalletWithdrawAPIView(APIView):
                     status='pending'
                 )
 
-                # Deduct from wallet immediately (will be refunded if withdrawal fails)
-                wallet.balance -= amount_decimal
-                wallet.save(update_fields=['balance'])
+                # Deduct from wallet atomically (will be refunded if withdrawal fails)
+                wallet.withdraw(amount_decimal)
 
                 # Create transaction record
                 WalletTransaction.objects.create(
@@ -363,13 +362,9 @@ class WalletWithdrawAPIView(APIView):
                     transaction_type='debit',
                     amount=amount_decimal,
                     description=f'Withdrawal to {bank_name} - {account_number}',
-                    status='pending',
-                    metadata={
-                        'withdrawal_id': str(withdrawal_request.id),
-                        'bank_name': bank_name,
-                        'account_number': account_number,
-                        'account_name': account_name
-                    }
+                    reference=f"WDR_{withdrawal_request.id}",
+                    external_reference=f"WDR_{withdrawal_request.id}",
+                    status='pending'
                 )
 
             # Create in-app notification
@@ -400,8 +395,10 @@ class WalletWithdrawAPIView(APIView):
             )
 
         except Exception as e:
+            import logging
+            logging.getLogger(__name__).error(f"Withdrawal error: {str(e)}", exc_info=True)
             return error_response(
-                message=f"Failed to process withdrawal: {str(e)}",
+                message="An error occurred while processing your withdrawal. Please try again.",
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
@@ -658,6 +655,6 @@ class PSB9WebhookView(APIView):
         except Exception as e:
             logger.error(f"9PSB webhook: Error processing deposit: {str(e)}", exc_info=True)
             return error_response(
-                message=f"Failed to process deposit: {str(e)}",
+                message="Failed to process deposit",
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
             )

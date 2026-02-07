@@ -59,7 +59,7 @@ class CreateGoalPaymentLinkAPIView(APIView):
             return error_response('Savings goal not found or does not belong to you')
         except Exception as e:
             logger.error(f"Error finding goal: {str(e)}")
-            return error_response(f'Error finding goal: {str(e)}')
+            return error_response('An error occurred while finding the goal. Please try again.')
 
         # Create payment link
         try:
@@ -84,7 +84,7 @@ class CreateGoalPaymentLinkAPIView(APIView):
 
         except Exception as e:
             logger.error(f"Failed to create payment link: {str(e)}", exc_info=True)
-            return error_response(f"Failed to create payment link: {str(e)}")
+            return error_response("Failed to create payment link. Please try again.")
 
 
 class CreateEventPaymentLinkAPIView(APIView):
@@ -154,7 +154,10 @@ class CreateEventPaymentLinkAPIView(APIView):
                 )
 
         except Exception as e:
-            return error_response(f"Failed to create payment link: {str(e)}")
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Failed to create event payment link: {str(e)}", exc_info=True)
+            return error_response("Failed to create payment link. Please try again.")
 
 
 class CreateWalletPaymentLinkAPIView(APIView):
@@ -202,7 +205,7 @@ class CreateWalletPaymentLinkAPIView(APIView):
             import logging
             logger = logging.getLogger(__name__)
             logger.error(f"Failed to create wallet payment link: {str(e)}", exc_info=True)
-            return error_response(f"Failed to create payment link: {str(e)}")
+            return error_response("Failed to create payment link. Please try again.")
 
 
 class ViewPaymentLinkPublicAPIView(APIView):

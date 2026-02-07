@@ -824,6 +824,11 @@ class PayoutWebhookView(APIView):
                 logger.warning(f"Withdrawal request not found for ref: {transaction_ref}")
                 return JsonResponse({'error': 'Withdrawal request not found'}, status=404)
 
+            # Idempotency: skip if already in a terminal state
+            if withdrawal_request.status in ('completed', 'failed'):
+                logger.info(f"Payout webhook replay for already-{withdrawal_request.status} withdrawal {withdrawal_request.id}")
+                return JsonResponse({'status': 'success', 'message': 'Already processed'}, status=200)
+
             # Update withdrawal status based on payout status
             if status_value in ['successful', 'success', 'completed']:
                 withdrawal_request.status = 'completed'
@@ -875,7 +880,6 @@ class PayoutWebhookView(APIView):
             return JsonResponse({
                 'status': 'success',
                 'message': 'Webhook processed',
-                'data': payload
             }, status=200)
 
         except Exception as e:
@@ -996,28 +1000,6 @@ class EmbedlyWebhookView(APIView):
             for i, (secret, secret_name) in enumerate(zip(secret_candidates, secret_names[:len(secret_candidates)])):
                 secret_preview = f"{secret[:4]}...{secret[-4:]}" if len(secret) > 8 else "***"
                 secret_diagnostics.append(f"{secret_name}: {secret_preview} (len={len(secret)}) - tried SHA512 and SHA256")
-
-            # DETAILED LOGGING FOR DEBUGGING - Share this with Embedly support
-            body_bytes = raw_body.encode('utf-8')
-            secret = secret_candidates[0]
-
-            logger.error("=" * 80)
-            logger.error("EMBEDLY WEBHOOK SIGNATURE MISMATCH - DEBUG INFO")
-            logger.error("=" * 80)
-            logger.error(f"PROVIDED SIGNATURE: {provided_signature}")
-            logger.error(f"Signature length: {len(provided_signature)} chars")
-            logger.error(f"Body length: {len(raw_body)} chars")
-            logger.error(f"RAW BODY: {raw_body}")
-            logger.error(f"API Key: {secret}")
-            logger.error("")
-            logger.error("=== OUR COMPUTED SIGNATURES ===")
-            logger.error(f"HMAC-SHA512(key, body): {hmac.new(secret.encode(), body_bytes, hashlib.sha512).hexdigest()}")
-            logger.error(f"HMAC-SHA256(key, body): {hmac.new(secret.encode(), body_bytes, hashlib.sha256).hexdigest()}")
-            logger.error(f"SHA512(secret): {hashlib.sha512(secret.encode()).hexdigest()}")
-            logger.error(f"SHA256(secret): {hashlib.sha256(secret.encode()).hexdigest()}")
-            logger.error(f"SHA512(body): {hashlib.sha512(body_bytes).hexdigest()}")
-            logger.error(f"SHA256(body): {hashlib.sha256(body_bytes).hexdigest()}")
-            logger.error("=" * 80)
 
             logger.warning(
                 "Embedly deposit webhook signature mismatch",
@@ -1182,6 +1164,4 @@ class EmbedlyWebhookView(APIView):
         return JsonResponse({
             'status': 'success',
             'message': 'Webhook received and wallet updated',
-            'data': payload,
-            'timestamp': str(wallet_transaction.created_at)
         }, status=200)

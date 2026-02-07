@@ -63,7 +63,7 @@ class EmbedlyClient:
             )
         except Exception as e:
             # Fallback logging in case DB logging fails
-            print(f"[DB LOGGING ERROR] Failed to log Embedly request: {e}")
+            import sys; print(f"[DB LOGGING ERROR] Failed to log Embedly request: {e}", file=sys.stderr)
 
     def _make_request(self, method: str, endpoint: str, data: Optional[Dict[str, Any]] = None, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """

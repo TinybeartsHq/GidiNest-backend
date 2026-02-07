@@ -90,7 +90,7 @@ class CuoralAPI:
             try:
                 if 'response' in locals() and response is not None:
                     error_details = response.text
-            except:
+            except (ValueError, AttributeError):
                 pass
             return {
                 "status": "error",

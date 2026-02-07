@@ -33,16 +33,9 @@ ALLOWED_HOSTS = [
     "app.gidinest.com",
     "gidinest.com",
     "www.gidinest.com",
+    "167.99.120.170",  # Your DigitalOcean server IP
     "localhost",
     "127.0.0.1",
-    "192.168.8.2",
-    "192.168.100.2",
-    "192.168.1.63",
-    "167.99.120.170",  # Your DigitalOcean server IP
-    "172.20.10.7",   # Current local network IP for mobile testing
-    "172.20.10.11",  # Previous local network IP for mobile testing
-    "192.168.100.57",
-    "0.0.0.0",  # Development server
 ]
 
 
@@ -80,6 +73,7 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'core.middleware.IdempotencyKeyMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
@@ -214,6 +208,7 @@ CORS_ALLOW_HEADERS = [
     'accept-encoding',
     'authorization',
     'content-type',
+    'idempotency-key',
     'origin',
     'user-agent',
     'x-csrftoken',
@@ -471,8 +466,19 @@ CELERY_WORKER_MAX_TASKS_PER_CHILD = 1000
 # Beat scheduler settings (for periodic tasks)
 CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
 
+# Cache Configuration (Redis DB 1 — Celery uses DB 0)
+CACHES = {
+    'default': {
+        'BACKEND': 'django_redis.cache.RedisCache',
+        'LOCATION': os.getenv('REDIS_URL', config('REDIS_URL', default='redis://localhost:6379/1')),
+        'OPTIONS': {
+            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+        },
+        'TIMEOUT': 300,
+    }
+}
+
 # Django Ratelimit Configuration
-# Fix for reverse proxy (Nginx) with Unix sockets
 RATELIMIT_USE_CACHE = 'default'
 
 
@@ -808,3 +814,25 @@ JAZZMIN_UI_TWEAKS = {
         "success": "btn-success"
     }
 }
+
+
+# ==============================================
+# SECURITY HEADERS
+# ==============================================
+# HTTPS enforcement (enable when SSL is fully configured)
+SECURE_SSL_REDIRECT = not DEBUG
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+
+# HSTS (HTTP Strict Transport Security)
+SECURE_HSTS_SECONDS = 31536000  # 1 year
+SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+SECURE_HSTS_PRELOAD = True
+
+# Cookie security
+SESSION_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_SECURE = not DEBUG
+SESSION_COOKIE_HTTPONLY = True
+
+# Content security
+SECURE_CONTENT_TYPE_NOSNIFF = True
+X_FRAME_OPTIONS = 'DENY'

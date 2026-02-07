@@ -11,12 +11,11 @@ from onboarding.serializers import ActivateEmailSerializer, RegisterCompleteSeri
 from account.models.users import UserModel
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework import permissions
-import random
+import secrets
+import logging
 from django.utils import timezone
-from django.core.mail import send_mail
-from rest_framework import status
-from rest_framework.views import APIView
-from rest_framework.response import Response
+from django.utils.decorators import method_decorator
+from django_ratelimit.decorators import ratelimit
 from django.contrib.auth.hashers import make_password
 from onboarding.models import PasswordResetOTP, RegisterTempData, User
 from onboarding.serializers import RequestOTPSerializer, VerifyOTPSerializer, ResetPasswordSerializer
@@ -24,6 +23,43 @@ from django.contrib.auth import authenticate
 from django.conf import settings
 from providers.helpers.cuoral import CuoralAPI
 from django.db.models import Q
+
+logger = logging.getLogger(__name__)
+
+
+def _get_client_ip(group, request):
+    """Get client IP for rate limiting behind reverse proxy."""
+    x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+    if x_forwarded_for:
+        return x_forwarded_for.split(',')[0].strip()
+    return request.META.get('HTTP_X_REAL_IP') or request.META.get('REMOTE_ADDR', '0.0.0.0')
+
+
+def _verify_google_id_token(id_token):
+    """
+    Verify a Google ID token server-side using Google's tokeninfo endpoint.
+    Returns user info dict on success, None on failure.
+    """
+    try:
+        import requests as http_requests
+        resp = http_requests.get(
+            'https://oauth2.googleapis.com/tokeninfo',
+            params={'id_token': id_token},
+            timeout=10,
+        )
+        if resp.status_code != 200:
+            logger.warning("Google token verification failed: %s", resp.text)
+            return None
+        token_data = resp.json()
+        # Verify the token was issued for our app (if CLIENT_ID is configured)
+        google_client_id = getattr(settings, 'GOOGLE_CLIENT_ID', None)
+        if google_client_id and token_data.get('aud') != google_client_id:
+            logger.warning("Google token audience mismatch: expected %s, got %s", google_client_id, token_data.get('aud'))
+            return None
+        return token_data
+    except Exception as e:
+        logger.error("Google token verification error: %s", e)
+        return None
 
 
 class RegisterInitiateView(APIView):
@@ -69,8 +105,7 @@ class RegisterInitiateView(APIView):
 
             else:
                 # Direct Email Flow: Send OTP
-                otp = str(random.randint(100000, 999999))
-                print(otp)
+                otp = str(secrets.randbelow(900000) + 100000)
 
                 temp_data = RegisterTempData.objects.create(
                     email=email,
@@ -106,6 +141,7 @@ class RegisterVerifyOTPView(APIView):
     """
     permission_classes = [permissions.AllowAny]
 
+    @method_decorator(ratelimit(key=_get_client_ip, rate='10/h', method='POST', block=True))
     def post(self, request, *args, **kwargs):
         serializer = RegisterOTPSerializer(data=request.data)
         if serializer.is_valid():
@@ -272,6 +308,7 @@ class LoginView(APIView):
 
     permission_classes = [permissions.AllowAny]
 
+    @method_decorator(ratelimit(key=_get_client_ip, rate='10/h', method='POST', block=True))
     def post(self, request, *args, **kwargs):
         serializer = LoginSerializer(data=request.data)
         if serializer.is_valid():
@@ -291,27 +328,31 @@ class LoginView(APIView):
 
             if login_type == "oauth":
                 if oauth_type == "google":
+                    # Verify Google ID token server-side
+                    google_data = _verify_google_id_token(password)
+                    if not google_data:
+                        return error_response("Invalid Google authentication token")
+                    google_email = google_data.get('email')
+                    google_sub = google_data.get('sub')
                     try:
-                        user = UserModel.objects.get(email=email,google_id=password)
-                    except:
+                        user = UserModel.objects.get(email=google_email, google_id=google_sub)
+                    except UserModel.DoesNotExist:
                         return error_response("Invalid email, please sign up for an account")
 
             else:
-                print(login_with)
                 if login_with == "email":
-                
+
                     user = authenticate(email=email, password=password)
                 else:
                     try:
                         user = UserModel.objects.get(phone=phone)
-                        print(user)
 
                         user = authenticate(email=user.email, password=password)
                         if not user:
                             return error_response("Invalid phone or password")
-                    except:
+                    except UserModel.DoesNotExist:
                         return error_response("Invalid phone or password")
-                    
+
                 if user is None:
                     return error_response("Invalid email or password")
                 if not user.is_active:

@@ -1,10 +1,13 @@
 # savings/views.py
+import logging
 from decimal import Decimal
 from rest_framework import status
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from core.helpers.response import success_response, validation_error_response, error_response
+
+logger = logging.getLogger(__name__)
 from wallet.models import Wallet, WalletTransaction
 from .models import SavingsGoalModel, SavingsGoalTransaction
 from .serializers import SavingsGoalSerializer, SavingsGoalTransactionSerializer
@@ -148,12 +151,11 @@ class SavingsGoalContributeWithdrawAPIView(APIView):
                 return success_response(message = f"{transaction_type.capitalize()} successful for goal: {goal.name}")
 
             except ValueError as e:
-               print(e)
-               return error_response(f"An error occurred during transaction: {e}")
+               logger.warning(f"Savings transaction validation error: {e}")
+               return error_response("An error occurred during transaction. Please try again.")
             except Exception as e:
-                print(e)
-                # Catch any other unexpected errors during atomic transaction
-                return error_response(f"An error occurred during transaction: {e}")
+                logger.error(f"Savings transaction error: {e}", exc_info=True)
+                return error_response("An error occurred during transaction. Please try again.")
 
 
 class UserAllSavingsHistoryAPIView(APIView):

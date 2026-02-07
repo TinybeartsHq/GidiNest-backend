@@ -31,7 +31,7 @@ class PSB9Client:
         self.password = getattr(settings, 'PSB9_PASSWORD', None)
         self.client_id = getattr(settings, 'PSB9_CLIENT_ID', None)
         self.client_secret = getattr(settings, 'PSB9_CLIENT_SECRET', None)
-        self.base_url = getattr(settings, 'PSB9_BASE_URL', 'http://102.216.128.75:9090')
+        self.base_url = getattr(settings, 'PSB9_BASE_URL', 'https://102.216.128.75:9090')
         self.merchant_id = getattr(settings, 'PSB9_MERCHANT_ID', None)
 
         # Cache key for storing auth token
@@ -213,7 +213,7 @@ class PSB9Client:
                     return {"status": "success", "data": wallet_data}
 
                 logger.error(f"9PSB wallet opening HTTP error: {error_message}. Full response: {error_data}")
-            except:
+            except (json.JSONDecodeError, ValueError):
                 logger.error(f"9PSB wallet opening HTTP error: {error_message}. Status: {response.status_code}")
             return {"status": "error", "message": error_message, "details": error_details}
         except requests.exceptions.RequestException as e:
@@ -343,7 +343,7 @@ class PSB9Client:
             "fromAccount": from_account,
             "toAccount": to_account,
             "toBankCode": to_bank_code,
-            "amount": float(amount),
+            "amount": str(amount),
             "narration": narration,
             "reference": reference
         }
@@ -367,7 +367,7 @@ class PSB9Client:
             try:
                 error_data = response.json()
                 error_message = error_data.get('message', error_message)
-            except:
+            except (json.JSONDecodeError, ValueError):
                 pass
             logger.error(f"9PSB transfer HTTP error: {error_message}")
             return {"status": "error", "message": error_message}

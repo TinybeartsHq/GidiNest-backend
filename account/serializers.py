@@ -9,13 +9,11 @@ class UserProfileSerializer(serializers.ModelSerializer):
         fields = [
             'username', 'first_name', 'last_name', 'email', 'phone','dob', 'address',
             'country', 'state', 'currency','is_active', 'is_verified', 'is_admin','image',
-            'last_login','has_bvn','account_tier','bvn','phone','bvn_dob','email_verified',
-            'has_nin', 'nin', 'nin_dob', 'nin_first_name', 'nin_last_name',
-            'bvn_first_name', 'bvn_last_name', 'has_virtual_wallet',
+            'last_login','has_bvn','account_tier','email_verified',
+            'has_nin', 'has_virtual_wallet',
         ]
         read_only_fields = ['email', 'username', 'is_active', 'is_verified', 'is_admin', 'last_login',
-                           'bvn','phone','bvn_dob', 'nin', 'nin_dob', 'bvn_first_name', 'bvn_last_name',
-                           'nin_first_name', 'nin_last_name', 'has_virtual_wallet',]
+                           'phone', 'has_virtual_wallet',]
 
 
 class UpdateUserProfileSerializer(serializers.ModelSerializer):

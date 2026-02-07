@@ -1,7 +1,10 @@
 # notifications/utils.py
+import logging
 
 from account.models.users import UserModel
 from account.models import UserDevices
+
+logger = logging.getLogger(__name__)
 
 # Optional Firebase import - handle gracefully if not configured
 try:
@@ -53,9 +56,9 @@ def send_push_notification_to_user(user: UserModel, title: str, message: str):
             )
 
             response = messaging.send(fcm_message)
-            print(f"Notification sent to device {device.device_id} — Response: {response}")
+            logger.info(f"Notification sent to device {device.device_id}")
 
         except Exception as e:
-            print(f"Failed to send notification to device {device.device_id} — Error: {e}")
+            logger.error(f"Failed to send notification to device {device.device_id}: {e}")
 
 

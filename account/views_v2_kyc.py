@@ -124,14 +124,8 @@ class V2BVNVerifyView(APIView):
             # Extract BVN data from Prembly response
             prembly_data = prembly_response.get("data", {})
 
-            # Debug: Log the actual Prembly response structure
-            logger.info(f"DEBUG - Raw Prembly response: {prembly_response}")
-            logger.info(f"DEBUG - Prembly data: {prembly_data}")
-
             # Handle different Prembly response structures
             verification_data = prembly_data.get("data") or prembly_data.get("verification") or prembly_data
-
-            logger.info(f"DEBUG - Extracted verification_data: {verification_data}")
 
         # Store verification result in cache for 10 minutes
         cache_key = f"bvn_verification_{user.id}"
@@ -295,12 +289,12 @@ class V2BVNConfirmView(APIView):
                                 from dateutil import parser
                                 dob_obj = parser.parse(dob)
                                 formatted_dob = dob_obj.strftime('%d/%m/%Y')
-                            except:
+                            except (ValueError, TypeError):
                                 # Fallback: assume YYYY-MM-DD format
                                 try:
                                     dob_obj = datetime.strptime(dob, '%Y-%m-%d')
                                     formatted_dob = dob_obj.strftime('%d/%m/%Y')
-                                except:
+                                except (ValueError, TypeError):
                                     formatted_dob = dob  # Use as-is if parsing fails
                         elif hasattr(dob, 'strftime'):
                             # Date or datetime object
@@ -647,9 +641,29 @@ class V2WalletSyncView(APIView):
                 }
             }, status=status.HTTP_400_BAD_REQUEST)
 
-        # Get wallet details from request (or use defaults for this user)
-        account_number = request.data.get('account_number', '1100072011')
-        customer_id = request.data.get('customer_id', '007201')
+        # Look up wallet details from 9PSB using user's BVN
+        try:
+            result = psb9_client.get_wallet_by_bvn(user.bvn)
+            if result.get("status") != "success":
+                return Response({
+                    "success": False,
+                    "error": {
+                        "code": "WALLET_LOOKUP_FAILED",
+                        "message": "Could not find wallet details from 9PSB. Please retry wallet creation."
+                    }
+                }, status=status.HTTP_400_BAD_REQUEST)
+            wallet_lookup = result.get("data", {})
+            account_number = wallet_lookup.get("accountNumber", "")
+            customer_id = wallet_lookup.get("customerID") or wallet_lookup.get("customerId", "")
+        except Exception as e:
+            logger.error(f"Error looking up 9PSB wallet by BVN for {user.email}: {e}", exc_info=True)
+            return Response({
+                "success": False,
+                "error": {
+                    "code": "WALLET_LOOKUP_FAILED",
+                    "message": "Failed to look up wallet details. Please try again."
+                }
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         # Construct account name from user details
         first_name = user.bvn_first_name or user.first_name or ""
