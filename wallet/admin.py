@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Wallet, WalletTransaction, WithdrawalRequest, PaymentLink, PaymentLinkContribution
+from .models import Wallet, WalletTransaction, WithdrawalRequest, PaymentLink, PaymentLinkContribution, FeeConfiguration, PlatformWallet
 
 
 @admin.register(Wallet)
@@ -50,12 +50,12 @@ class WalletTransactionAdmin(admin.ModelAdmin):
         'wallet_account_number',
         'transaction_type',
         'amount',
+        'total_fee',
+        'net_amount',
         'status',
         'reference',
         'external_reference',
         'description',
-        'sender_name',
-        'sender_account',
         'created_at',
     )
     search_fields = ('wallet__account_number', 'sender_name', 'sender_account', 'reference', 'external_reference')
@@ -145,3 +145,116 @@ class PaymentLinkContributionAdmin(admin.ModelAdmin):
     def payment_link_preview(self, obj):
         return str(obj.payment_link)
     payment_link_preview.short_description = 'Payment Link'
+
+
+@admin.register(FeeConfiguration)
+class FeeConfigurationAdmin(admin.ModelAdmin):
+    list_display = (
+        'name',
+        'is_active',
+        'transfer_fee_tier1_amount',
+        'transfer_fee_tier2_amount',
+        'transfer_fee_tier3_amount',
+        'vat_rate_display',
+        'emtl_amount',
+        'pl_commission_display',
+        'created_at',
+    )
+    list_filter = ('is_active', 'created_at')
+    readonly_fields = ('id', 'created_at', 'updated_at')
+
+    fieldsets = (
+        ('Configuration Identity', {
+            'fields': ('id', 'name', 'is_active', 'notes')
+        }),
+        ('Transfer Fee Tiers', {
+            'fields': (
+                'transfer_fee_tier1_max', 'transfer_fee_tier1_amount',
+                'transfer_fee_tier2_max', 'transfer_fee_tier2_amount',
+                'transfer_fee_tier3_amount',
+            ),
+            'description': 'Tiered fees applied to transfers, withdrawals, and deposits.'
+        }),
+        ('VAT', {
+            'fields': ('vat_rate',),
+            'description': 'VAT is applied to the transfer fee or commission, NOT the principal amount.'
+        }),
+        ('EMTL / Stamp Duty', {
+            'fields': ('emtl_threshold', 'emtl_amount'),
+            'description': 'Fixed charge applied when transaction amount >= threshold.'
+        }),
+        ('Payment Link Commission', {
+            'fields': ('payment_link_commission_rate',),
+            'description': 'Percentage commission charged on payment link contributions. VAT is applied on top.'
+        }),
+        ('Timestamps', {
+            'fields': ('created_at', 'updated_at'),
+        }),
+    )
+
+    def vat_rate_display(self, obj):
+        return f"{obj.vat_rate * 100:.2f}%"
+    vat_rate_display.short_description = 'VAT Rate'
+
+    def pl_commission_display(self, obj):
+        return f"{obj.payment_link_commission_rate * 100:.2f}%"
+    pl_commission_display.short_description = 'PL Commission'
+
+
+@admin.register(PlatformWallet)
+class PlatformWalletAdmin(admin.ModelAdmin):
+    list_display = (
+        'wallet_type',
+        'balance_display',
+        'transfer_fees_display',
+        'vat_display',
+        'emtl_display',
+        'commission_display',
+        'updated_at',
+    )
+    readonly_fields = (
+        'id', 'wallet_type', 'balance', 'total_transfer_fees',
+        'total_vat', 'total_emtl', 'total_commission',
+        'created_at', 'updated_at',
+    )
+
+    fieldsets = (
+        ('Revenue Summary', {
+            'fields': ('id', 'wallet_type', 'balance'),
+        }),
+        ('Fee Breakdown (Lifetime)', {
+            'fields': (
+                'total_transfer_fees', 'total_vat',
+                'total_emtl', 'total_commission',
+            ),
+        }),
+        ('Timestamps', {
+            'fields': ('created_at', 'updated_at'),
+        }),
+    )
+
+    def has_add_permission(self, request):
+        return not PlatformWallet.objects.exists()
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def balance_display(self, obj):
+        return f"₦{obj.balance:,.2f}"
+    balance_display.short_description = 'Balance'
+
+    def transfer_fees_display(self, obj):
+        return f"₦{obj.total_transfer_fees:,.2f}"
+    transfer_fees_display.short_description = 'Transfer Fees'
+
+    def vat_display(self, obj):
+        return f"₦{obj.total_vat:,.2f}"
+    vat_display.short_description = 'VAT'
+
+    def emtl_display(self, obj):
+        return f"₦{obj.total_emtl:,.2f}"
+    emtl_display.short_description = 'EMTL'
+
+    def commission_display(self, obj):
+        return f"₦{obj.total_commission:,.2f}"
+    commission_display.short_description = 'Commission'

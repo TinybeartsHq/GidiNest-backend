@@ -74,8 +74,10 @@ class TransactionListView(APIView):
                     "id": str(txn.id),
                     "type": txn.transaction_type,
                     "amount": str(txn.amount),
+                    "fee": str(txn.total_fee),
+                    "net_amount": str(txn.net_amount or txn.amount),
                     "description": txn.description or "Wallet transaction",
-                    "status": "completed",  # Wallet transactions are always completed
+                    "status": txn.status or "completed",
                     "created_at": txn.created_at.isoformat(),
                     "metadata": {
                         "sender_name": txn.sender_name,
@@ -228,10 +230,16 @@ class TransactionDetailView(APIView):
                     "id": str(wallet_txn.id),
                     "type": wallet_txn.transaction_type,
                     "amount": str(wallet_txn.amount),
-                    "fee": "0.00",  # TODO: Add fee field to model if needed
-                    "net_amount": str(wallet_txn.amount),
+                    "fee": str(wallet_txn.total_fee),
+                    "fee_breakdown": {
+                        "transfer_fee": str(wallet_txn.fee_amount),
+                        "vat": str(wallet_txn.vat_amount),
+                        "emtl": str(wallet_txn.emtl_amount),
+                        "commission": str(wallet_txn.commission_amount),
+                    },
+                    "net_amount": str(wallet_txn.net_amount or wallet_txn.amount),
                     "description": wallet_txn.description or "Wallet transaction",
-                    "status": "completed",
+                    "status": wallet_txn.status or "completed",
                     "created_at": wallet_txn.created_at.isoformat(),
                     "metadata": {
                         "sender_name": wallet_txn.sender_name,

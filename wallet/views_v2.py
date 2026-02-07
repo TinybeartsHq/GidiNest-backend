@@ -13,7 +13,8 @@ from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiExampl
 from drf_spectacular.types import OpenApiTypes
 
 from core.helpers.response import success_response, validation_error_response, error_response
-from .models import Wallet, WalletTransaction, WithdrawalRequest
+from .models import Wallet, WalletTransaction, WithdrawalRequest, FeeConfiguration
+from .fee_utils import calculate_transfer_fees, calculate_deposit_fees, calculate_payment_link_fees, settle_fees_to_platform
 from .serializers import WalletBalanceSerializer, WalletTransactionSerializer
 from savings.models import SavingsGoalModel
 from savings.serializers import SavingsGoalSerializer
@@ -340,6 +341,10 @@ class WalletWithdrawAPIView(APIView):
                 status_code=status.HTTP_400_BAD_REQUEST
             )
 
+        # Calculate fees
+        config = FeeConfiguration.get_active()
+        fees = calculate_transfer_fees(amount_decimal, config=config)
+
         # Create withdrawal request
         try:
             with transaction.atomic():
@@ -353,19 +358,28 @@ class WalletWithdrawAPIView(APIView):
                     status='pending'
                 )
 
-                # Deduct from wallet atomically (will be refunded if withdrawal fails)
+                # Deduct full amount from wallet (will be refunded if withdrawal fails)
                 wallet.withdraw(amount_decimal)
 
-                # Create transaction record
+                # Create transaction record with fee breakdown
                 WalletTransaction.objects.create(
                     wallet=wallet,
                     transaction_type='debit',
                     amount=amount_decimal,
+                    fee_amount=fees.transfer_fee,
+                    vat_amount=fees.vat,
+                    emtl_amount=fees.emtl,
+                    total_fee=fees.total_fees,
+                    net_amount=fees.net_amount,
+                    fee_config=config,
                     description=f'Withdrawal to {bank_name} - {account_number}',
                     reference=f"WDR_{withdrawal_request.id}",
                     external_reference=f"WDR_{withdrawal_request.id}",
                     status='pending'
                 )
+
+            # Settle fees to platform wallet (outside atomic block)
+            settle_fees_to_platform(fees)
 
             # Create in-app notification
             try:
@@ -551,19 +565,44 @@ class PSB9WebhookView(APIView):
                 # Convert amount to Decimal
                 amount_decimal = Decimal(str(amount))
 
-                # Credit wallet
-                wallet.deposit(amount_decimal)
+                # Detect if this is a payment link contribution (for fee calculation)
+                from wallet.payment_link_helpers import _extract_pl_identifier
+                config = FeeConfiguration.get_active()
+                pl_identifier = _extract_pl_identifier(reference, narration)
 
-                # Create transaction record
+                if pl_identifier:
+                    fees = calculate_payment_link_fees(amount_decimal, config=config)
+                    fee_kwargs = {
+                        'commission_amount': fees.commission,
+                        'vat_amount': fees.vat_on_commission,
+                    }
+                else:
+                    # Deposits: EMTL only (no transfer fee or VAT)
+                    fees = calculate_deposit_fees(amount_decimal, config=config)
+                    fee_kwargs = {
+                        'emtl_amount': fees.emtl,
+                    }
+
+                # Credit wallet with net amount (after fees)
+                wallet.deposit(fees.net_amount)
+
+                # Create transaction record with fee breakdown
                 wallet_transaction = WalletTransaction.objects.create(
                     wallet=wallet,
                     transaction_type='credit',
                     amount=amount_decimal,
+                    total_fee=fees.total_fees,
+                    net_amount=fees.net_amount,
+                    fee_config=config,
                     description=narration or f"Deposit from {sender_name or 'Bank Transfer'}",
                     sender_name=sender_name,
                     sender_account=sender_account,
-                    external_reference=reference
+                    external_reference=reference,
+                    **fee_kwargs,
                 )
+
+                # Settle fees to platform wallet
+                settle_fees_to_platform(fees)
 
                 logger.info(
                     f"9PSB webhook: Deposit processed successfully. "
@@ -607,16 +646,20 @@ class PSB9WebhookView(APIView):
 
                 # Send notifications (skip generic ones for payment link contributions)
                 if not is_payment_link_contribution:
+                    credit_msg = f"Your wallet has been credited with ₦{fees.net_amount:,.2f}"
+                    if fees.total_fees > 0:
+                        credit_msg += f" (₦{amount_decimal:,.2f} received, ₦{fees.total_fees:,.2f} fees)"
+
                     # Send push notification to user
                     try:
                         if PUSH_NOTIFICATIONS_AVAILABLE:
                             send_push_notification_to_user(
                                 user=wallet.user,
                                 title="Deposit Received",
-                                body=f"Your wallet has been credited with ₦{amount_decimal:,.2f}",
+                                body=credit_msg,
                                 data={
                                     'type': 'wallet_credit',
-                                    'amount': str(amount_decimal),
+                                    'amount': str(fees.net_amount),
                                     'reference': reference
                                 }
                             )
@@ -629,10 +672,10 @@ class PSB9WebhookView(APIView):
                         Notification.objects.create(
                             user=wallet.user,
                             title="Deposit Received",
-                            message=f"Your wallet has been credited with ₦{amount_decimal:,.2f}",
+                            message=credit_msg,
                             notification_type='wallet_credit',
                             data={
-                                'amount': str(amount_decimal),
+                                'amount': str(fees.net_amount),
                                 'reference': reference,
                                 'transaction_id': str(wallet_transaction.id)
                             }

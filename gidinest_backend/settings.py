@@ -707,6 +707,10 @@ JAZZMIN_SETTINGS = {
         "wallet.Wallet": "fas fa-wallet",
         "wallet.WalletTransaction": "fas fa-exchange-alt",
         "wallet.WithdrawalRequest": "fas fa-money-bill-wave",
+        "wallet.FeeConfiguration": "fas fa-percentage",
+        "wallet.PlatformWallet": "fas fa-building-columns",
+        "wallet.PaymentLink": "fas fa-link",
+        "wallet.PaymentLinkContribution": "fas fa-hand-holding-usd",
 
         "savings": "fas fa-piggy-bank",
         "savings.SavingsGoal": "fas fa-bullseye",

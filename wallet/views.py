@@ -27,7 +27,8 @@ from savings.serializers import SavingsGoalSerializer
 from wallet.serializers import WalletBalanceSerializer, WalletTransactionSerializer
 
 
-from .models import Wallet,WithdrawalRequest
+from .models import Wallet, WithdrawalRequest, FeeConfiguration
+from .fee_utils import calculate_transfer_fees, calculate_deposit_fees, calculate_payment_link_fees, settle_fees_to_platform
 
 from rest_framework import serializers
 
@@ -230,7 +231,11 @@ class InitiateWithdrawalAPIView(APIView):
                 "detail": "You don't have a wallet yet. Please verify your BVN or NIN to activate your wallet."
             }, status=status.HTTP_404_NOT_FOUND)
 
-        # Attempt atomic withdraw to ensure sufficient funds
+        # Calculate fees
+        config = FeeConfiguration.get_active()
+        fees = calculate_transfer_fees(withdrawal_amount, config=config)
+
+        # Attempt atomic withdraw to ensure sufficient funds (full amount)
         try:
             wallet.withdraw(withdrawal_amount)
         except Exception:
@@ -270,8 +275,8 @@ class InitiateWithdrawalAPIView(APIView):
         embedly_client = EmbedlyClient()
 
         try:
-            # Provider expects whole currency units (NGN), not kobo
-            amount_in_kobo = int(withdrawal_amount.to_integral_value())
+            # Provider expects whole currency units (NGN) — send net amount after fees
+            amount_in_kobo = int(fees.net_amount.to_integral_value())
 
             # Get currency ID from settings
             currency_id = settings.EMBEDLY_CURRENCY_ID_NGN
@@ -308,14 +313,23 @@ class InitiateWithdrawalAPIView(APIView):
                 withdrawal_request.status = 'processing'
                 withdrawal_request.save()
 
-                # Create debit transaction record with safe reference
+                # Create debit transaction record with fee breakdown
                 WalletTransaction.objects.create(
                     wallet=wallet,
                     transaction_type='debit',
                     amount=withdrawal_amount,
+                    fee_amount=fees.transfer_fee,
+                    vat_amount=fees.vat,
+                    emtl_amount=fees.emtl,
+                    total_fee=fees.total_fees,
+                    net_amount=fees.net_amount,
+                    fee_config=config,
                     description=f"Withdrawal to {bank_name} - {account_number}",
                     external_reference=txref or f"WITHDRAWAL_{withdrawal_request.id}"
                 )
+
+                # Settle fees to platform wallet
+                settle_fees_to_platform(fees)
 
                 # Serialize and return success
                 withdrawal_request_serializer = WithdrawalRequestSerializer(withdrawal_request)
@@ -1064,25 +1078,52 @@ class EmbedlyWebhookView(APIView):
                 if WalletTransaction.objects.filter(external_reference=reference).exists():
                     logger.warning(f"Transaction with reference {reference} already processed")
                     return JsonResponse({'error': 'Transaction with this reference has been processed'}, status=200)
-                
-                # Create transaction record
+
+                amount_decimal = Decimal(str(amount))
+
+                # Detect if this is a payment link contribution (for fee calculation)
+                from wallet.payment_link_helpers import _extract_pl_identifier
+                config = FeeConfiguration.get_active()
+                pl_identifier = _extract_pl_identifier(reference, data.get('narration', ''))
+
+                if pl_identifier:
+                    fees = calculate_payment_link_fees(amount_decimal, config=config)
+                    fee_kwargs = {
+                        'commission_amount': fees.commission,
+                        'vat_amount': fees.vat_on_commission,
+                    }
+                else:
+                    # Deposits: EMTL only (no transfer fee or VAT)
+                    fees = calculate_deposit_fees(amount_decimal, config=config)
+                    fee_kwargs = {
+                        'emtl_amount': fees.emtl,
+                    }
+
+                # Create transaction record with fee breakdown
                 wallet_transaction = WalletTransaction.objects.create(
                     wallet=wallet,
-                    transaction_type='credit',  # This is a credit to the wallet
-                    amount=amount,
+                    transaction_type='credit',
+                    amount=amount_decimal,
+                    total_fee=fees.total_fees,
+                    net_amount=fees.net_amount,
+                    fee_config=config,
                     description=f"Transfer from {sender_name} via NIP reference {reference}",
                     sender_name=sender_name,
                     sender_account=senderBank,
-                    external_reference=reference
+                    external_reference=reference,
+                    **fee_kwargs,
                 )
-                
-                # Update the wallet balance (ensure Decimal)
+
+                # Update the wallet balance with net amount (after fees)
                 try:
-                    wallet.deposit(Decimal(str(amount)))
-                    logger.info(f"Successfully credited {amount} to wallet {wallet.account_number} for user {wallet.user.email}")
+                    wallet.deposit(fees.net_amount)
+                    logger.info(f"Successfully credited {fees.net_amount} (gross {amount_decimal}, fees {fees.total_fees}) to wallet {wallet.account_number} for user {wallet.user.email}")
                 except Exception as deposit_error:
-                    logger.error(f"Failed to deposit {amount} to wallet {wallet.account_number}: {str(deposit_error)}")
+                    logger.error(f"Failed to deposit to wallet {wallet.account_number}: {str(deposit_error)}")
                     raise  # Re-raise to rollback the transaction
+
+                # Settle fees to platform wallet
+                settle_fees_to_platform(fees)
 
                 # Check if this is a payment link contribution
                 is_payment_link_contribution = False

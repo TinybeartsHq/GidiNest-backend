@@ -14,7 +14,8 @@ from django.db import IntegrityError, transaction as db_transaction
 from django.utils import timezone
 
 from core.helpers.response import success_response, validation_error_response, error_response
-from .models import Wallet, WalletTransaction
+from .models import Wallet, WalletTransaction, FeeConfiguration
+from .fee_utils import calculate_transfer_fees, calculate_deposit_fees, calculate_payment_link_fees, settle_fees_to_platform
 from providers.helpers.psb9 import PSB9Client
 
 logger = logging.getLogger(__name__)
@@ -404,7 +405,11 @@ class OtherBanksTransferAPIView(APIView):
                     status_code=status.HTTP_404_NOT_FOUND
                 )
 
-            # Check balance
+            # Calculate fees
+            config = FeeConfiguration.get_active()
+            fees = calculate_transfer_fees(amount_decimal, config=config)
+
+            # Check balance (full amount is debited)
             if wallet.balance < amount_decimal:
                 return error_response(
                     message="Insufficient balance",
@@ -414,13 +419,13 @@ class OtherBanksTransferAPIView(APIView):
             # Generate unique transaction ID
             transaction_id = f"TRF_{user.id}_{uuid.uuid4().hex[:12].upper()}"
 
-            # Transfer via 9PSB
+            # Transfer via 9PSB (recipient gets net amount after fees)
             psb9_client = PSB9Client()
             result = psb9_client.other_banks_transfer(
                 sender_account_number=wallet.psb9_account_number,
                 receiver_account_number=account_number,
                 bank_code=bank_code,
-                amount=str(amount_decimal),
+                amount=str(fees.net_amount),
                 transaction_id=transaction_id,
                 narration=narration
             )
@@ -428,14 +433,20 @@ class OtherBanksTransferAPIView(APIView):
             if result.get("status") == "success":
                 try:
                     with db_transaction.atomic():
-                        # Update wallet balance atomically
+                        # Update wallet balance atomically (debit full amount)
                         wallet.withdraw(amount_decimal)
 
-                        # Create transaction record
+                        # Create transaction record with fee breakdown
                         wallet_transaction = WalletTransaction.objects.create(
                             wallet=wallet,
                             transaction_type='debit',
                             amount=amount_decimal,
+                            fee_amount=fees.transfer_fee,
+                            vat_amount=fees.vat,
+                            emtl_amount=fees.emtl,
+                            total_fee=fees.total_fees,
+                            net_amount=fees.net_amount,
+                            fee_config=config,
                             description=f"Transfer to {account_name} - {bank_code}",
                             reference=transaction_id,
                             external_reference=transaction_id,
@@ -444,11 +455,21 @@ class OtherBanksTransferAPIView(APIView):
                             status='completed'
                         )
 
-                        return success_response(
+                    # Settle fees to platform wallet (outside atomic block)
+                    settle_fees_to_platform(fees)
+
+                    return success_response(
                             message="Transfer successful",
                             data={
                                 "transaction_id": transaction_id,
                                 "amount": str(amount_decimal),
+                                "fee_breakdown": {
+                                    "transfer_fee": str(fees.transfer_fee),
+                                    "vat": str(fees.vat),
+                                    "emtl": str(fees.emtl),
+                                    "total_fees": str(fees.total_fees),
+                                },
+                                "net_amount": str(fees.net_amount),
                                 "recipient": account_name,
                                 "account_number": account_number,
                                 "new_balance": str(wallet.balance),
@@ -1062,4 +1083,68 @@ class WalletUpgradeFileAPIView(APIView):
             return error_response(
                 message="Failed to upgrade wallet with file",
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+class FeePreviewAPIView(APIView):
+    """
+    Preview fee breakdown for a given amount and transaction type.
+    GET /api/v2/wallet/9psb/fees/preview?amount=100000&type=transfer
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        amount = request.query_params.get('amount')
+        fee_type = request.query_params.get('type', 'transfer')
+
+        if not amount:
+            return validation_error_response({"amount": ["Amount is required"]})
+
+        try:
+            amount_decimal = Decimal(str(amount))
+            if amount_decimal <= 0:
+                return validation_error_response({"amount": ["Amount must be greater than 0"]})
+        except (ValueError, TypeError, Exception):
+            return validation_error_response({"amount": ["Invalid amount format"]})
+
+        config = FeeConfiguration.get_active()
+
+        if fee_type == 'payment_link':
+            fees = calculate_payment_link_fees(amount_decimal, config=config)
+            return success_response(
+                message="Fee preview",
+                data={
+                    "amount": str(amount_decimal),
+                    "commission": str(fees.commission),
+                    "vat_on_commission": str(fees.vat_on_commission),
+                    "total_fees": str(fees.total_fees),
+                    "net_amount": str(fees.net_amount),
+                    "type": "payment_link",
+                }
+            )
+        elif fee_type == 'deposit':
+            fees = calculate_deposit_fees(amount_decimal, config=config)
+            return success_response(
+                message="Fee preview",
+                data={
+                    "amount": str(amount_decimal),
+                    "emtl": str(fees.emtl),
+                    "total_fees": str(fees.total_fees),
+                    "net_amount": str(fees.net_amount),
+                    "type": "deposit",
+                }
+            )
+        else:
+            fees = calculate_transfer_fees(amount_decimal, config=config)
+            return success_response(
+                message="Fee preview",
+                data={
+                    "amount": str(amount_decimal),
+                    "transfer_fee": str(fees.transfer_fee),
+                    "vat": str(fees.vat),
+                    "emtl": str(fees.emtl),
+                    "total_fees": str(fees.total_fees),
+                    "net_amount": str(fees.net_amount),
+                    "type": fee_type,
+                }
             )

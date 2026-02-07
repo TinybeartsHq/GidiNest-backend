@@ -1,11 +1,12 @@
 # wallet/models.py
+from decimal import Decimal
 from django.db import models
 from django.conf import settings
 from django.db import models, transaction
 from django.db.models import F
 from core.helpers.model import BaseModel
 import uuid
-import secrets  
+import secrets
 
 class Wallet(models.Model):
     """
@@ -242,6 +243,38 @@ class WalletTransaction(BaseModel):
         choices=STATUS_CHOICES,
         default='completed',
         help_text="Transaction status"
+    )
+
+    # Fee tracking fields
+    fee_amount = models.DecimalField(
+        max_digits=10, decimal_places=2, default=Decimal('0.00'),
+        help_text="Transfer/processing fee charged"
+    )
+    vat_amount = models.DecimalField(
+        max_digits=10, decimal_places=2, default=Decimal('0.00'),
+        help_text="VAT charged (on fee/commission, not on principal)"
+    )
+    emtl_amount = models.DecimalField(
+        max_digits=10, decimal_places=2, default=Decimal('0.00'),
+        help_text="EMTL/Stamp Duty charged"
+    )
+    commission_amount = models.DecimalField(
+        max_digits=10, decimal_places=2, default=Decimal('0.00'),
+        help_text="Commission charged (for payment link transactions)"
+    )
+    total_fee = models.DecimalField(
+        max_digits=10, decimal_places=2, default=Decimal('0.00'),
+        help_text="Total fees deducted (fee + vat + emtl + commission)"
+    )
+    net_amount = models.DecimalField(
+        max_digits=15, decimal_places=2, null=True, blank=True,
+        help_text="Amount after fee deductions (what recipient actually receives)"
+    )
+    fee_config = models.ForeignKey(
+        'FeeConfiguration',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        help_text="Fee configuration active when this transaction was processed"
     )
 
     class Meta:
@@ -502,6 +535,24 @@ class PaymentLinkContribution(BaseModel):
         help_text="Optional message from contributor"
     )
 
+    # Fee tracking
+    commission_amount = models.DecimalField(
+        max_digits=10, decimal_places=2, default=Decimal('0.00'),
+        help_text="Commission deducted from this contribution"
+    )
+    vat_amount = models.DecimalField(
+        max_digits=10, decimal_places=2, default=Decimal('0.00'),
+        help_text="VAT on commission"
+    )
+    total_fee = models.DecimalField(
+        max_digits=10, decimal_places=2, default=Decimal('0.00'),
+        help_text="Total fees deducted (commission + VAT)"
+    )
+    net_amount = models.DecimalField(
+        max_digits=15, decimal_places=2, null=True, blank=True,
+        help_text="Net amount credited to link owner after fees"
+    )
+
     class Meta:
         verbose_name = "Payment Link Contribution"
         verbose_name_plural = "Payment Link Contributions"
@@ -514,3 +565,162 @@ class PaymentLinkContribution(BaseModel):
     def __str__(self):
         contributor = self.contributor_name or "Anonymous"
         return f"{contributor} - {self.amount} to {self.payment_link}"
+
+
+class FeeConfiguration(BaseModel):
+    """
+    Admin-editable fee configuration for all wallet transactions.
+    Only one configuration should be active at a time (is_active=True).
+    Creating a new active config automatically deactivates the old one.
+    """
+    # Transfer fee tiers
+    transfer_fee_tier1_max = models.DecimalField(
+        max_digits=15, decimal_places=2, default=Decimal('5000.00'),
+        help_text="Upper bound for Tier 1. Amounts <= this get tier1 fee."
+    )
+    transfer_fee_tier1_amount = models.DecimalField(
+        max_digits=10, decimal_places=2, default=Decimal('10.00'),
+        help_text="Fee for amounts <= tier1_max (e.g., ₦10)"
+    )
+    transfer_fee_tier2_max = models.DecimalField(
+        max_digits=15, decimal_places=2, default=Decimal('50000.00'),
+        help_text="Upper bound for Tier 2. Amounts <= this get tier2 fee."
+    )
+    transfer_fee_tier2_amount = models.DecimalField(
+        max_digits=10, decimal_places=2, default=Decimal('25.00'),
+        help_text="Fee for tier1_max < amount <= tier2_max (e.g., ₦25)"
+    )
+    transfer_fee_tier3_amount = models.DecimalField(
+        max_digits=10, decimal_places=2, default=Decimal('50.00'),
+        help_text="Fee for amounts > tier2_max (e.g., ₦50)"
+    )
+
+    # VAT
+    vat_rate = models.DecimalField(
+        max_digits=5, decimal_places=4, default=Decimal('0.0750'),
+        help_text="VAT rate as decimal (0.075 = 7.5%). Applied to fee/commission, NOT principal."
+    )
+
+    # EMTL / Stamp Duty
+    emtl_threshold = models.DecimalField(
+        max_digits=15, decimal_places=2, default=Decimal('10000.00'),
+        help_text="Minimum transaction amount to trigger EMTL/Stamp Duty"
+    )
+    emtl_amount = models.DecimalField(
+        max_digits=10, decimal_places=2, default=Decimal('50.00'),
+        help_text="Fixed EMTL/Stamp Duty charge (e.g., ₦50)"
+    )
+
+    # Payment Link commission
+    payment_link_commission_rate = models.DecimalField(
+        max_digits=5, decimal_places=4, default=Decimal('0.0500'),
+        help_text="Payment link commission rate as decimal (0.05 = 5%)"
+    )
+
+    # Activation
+    is_active = models.BooleanField(
+        default=True,
+        help_text="Only one configuration should be active at a time."
+    )
+    name = models.CharField(
+        max_length=100, default='Default',
+        help_text="Human-readable name for this config"
+    )
+    notes = models.TextField(
+        blank=True, null=True,
+        help_text="Admin notes about why this config was created/changed"
+    )
+
+    class Meta:
+        verbose_name = "Fee Configuration"
+        verbose_name_plural = "Fee Configurations"
+        ordering = ['-created_at']
+
+    def __str__(self):
+        active_str = " [ACTIVE]" if self.is_active else ""
+        return f"{self.name}{active_str}"
+
+    def save(self, *args, **kwargs):
+        if self.is_active:
+            FeeConfiguration.objects.filter(is_active=True).exclude(pk=self.pk).update(is_active=False)
+        super().save(*args, **kwargs)
+
+    @classmethod
+    def get_active(cls):
+        """Return the currently active fee configuration, creating defaults if none exists."""
+        config = cls.objects.filter(is_active=True).first()
+        if config is None:
+            config = cls.objects.create(name='System Default', is_active=True)
+        return config
+
+
+class PlatformWallet(BaseModel):
+    """
+    Singleton wallet that accumulates all platform fee revenue.
+    Only one record should exist (enforced by get_instance()).
+    """
+    WALLET_TYPES = [
+        ('fee_revenue', 'Fee Revenue'),
+    ]
+
+    wallet_type = models.CharField(
+        max_length=20, choices=WALLET_TYPES, default='fee_revenue', unique=True,
+        help_text="Type of platform wallet"
+    )
+    balance = models.DecimalField(
+        max_digits=15, decimal_places=2, default=Decimal('0.00'),
+        help_text="Current accumulated fee revenue"
+    )
+    total_transfer_fees = models.DecimalField(
+        max_digits=15, decimal_places=2, default=Decimal('0.00'),
+        help_text="Lifetime total of transfer fees collected"
+    )
+    total_vat = models.DecimalField(
+        max_digits=15, decimal_places=2, default=Decimal('0.00'),
+        help_text="Lifetime total of VAT collected"
+    )
+    total_emtl = models.DecimalField(
+        max_digits=15, decimal_places=2, default=Decimal('0.00'),
+        help_text="Lifetime total of EMTL/Stamp Duty collected"
+    )
+    total_commission = models.DecimalField(
+        max_digits=15, decimal_places=2, default=Decimal('0.00'),
+        help_text="Lifetime total of payment link commissions collected"
+    )
+
+    class Meta:
+        verbose_name = "Platform Wallet"
+        verbose_name_plural = "Platform Wallets"
+
+    def __str__(self):
+        return f"Platform Wallet: ₦{self.balance:,.2f}"
+
+    def deposit(self, fee_amount=Decimal('0.00'), vat_amount=Decimal('0.00'),
+                emtl_amount=Decimal('0.00'), commission_amount=Decimal('0.00')):
+        """
+        Deposit fee revenue into the platform wallet atomically.
+        Tracks each fee component separately for reporting.
+        """
+        total = fee_amount + vat_amount + emtl_amount + commission_amount
+        if total <= 0:
+            return
+
+        with transaction.atomic():
+            pw = PlatformWallet.objects.select_for_update().get(pk=self.pk)
+            pw.balance = F('balance') + total
+            pw.total_transfer_fees = F('total_transfer_fees') + fee_amount
+            pw.total_vat = F('total_vat') + vat_amount
+            pw.total_emtl = F('total_emtl') + emtl_amount
+            pw.total_commission = F('total_commission') + commission_amount
+            pw.save(update_fields=[
+                'balance', 'total_transfer_fees', 'total_vat',
+                'total_emtl', 'total_commission', 'updated_at'
+            ])
+            pw.refresh_from_db()
+            self.balance = pw.balance
+
+    @classmethod
+    def get_instance(cls):
+        """Get or create the singleton platform wallet."""
+        pw, _ = cls.objects.get_or_create(wallet_type='fee_revenue')
+        return pw

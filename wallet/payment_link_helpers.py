@@ -97,64 +97,68 @@ def process_payment_link_contribution(reference, wallet_transaction, sender_name
             return (False, None)
 
         # Process the contribution
+        # Use net_amount (after fees) for goal crediting
+        credited_amount = wallet_transaction.net_amount or wallet_transaction.amount
+
         with transaction.atomic():
-            # Create contribution record
-            # Use the bank reference as external_reference for audit/deduplication
+            # Create contribution record with fee data from wallet transaction
             contribution = PaymentLinkContribution.objects.create(
                 payment_link=payment_link,
                 amount=wallet_transaction.amount,
+                commission_amount=wallet_transaction.commission_amount,
+                vat_amount=wallet_transaction.vat_amount,
+                total_fee=wallet_transaction.total_fee,
+                net_amount=credited_amount,
                 status='completed',
                 wallet_transaction=wallet_transaction,
                 contributor_name=sender_name,
                 external_reference=reference or pl_identifier
             )
 
-            # If payment link is for a savings goal, credit the goal
+            # If payment link is for a savings goal, credit the goal with net amount
             if payment_link.link_type == 'savings_goal' and payment_link.savings_goal:
                 goal = payment_link.savings_goal
 
-                # Add to goal's amount
-                goal.amount += wallet_transaction.amount
+                goal.amount += credited_amount
                 goal.save(update_fields=['amount', 'updated_at'])
 
-                # Create savings goal transaction
                 SavingsGoalTransaction.objects.create(
                     goal=goal,
                     transaction_type='contribution',
-                    amount=wallet_transaction.amount,
+                    amount=credited_amount,
                     description=f"Contribution from {sender_name or 'Anonymous'} via payment link",
                     goal_current_amount=goal.amount
                 )
 
                 # Debit from wallet (money goes to goal)
                 wallet = payment_link.user.wallet
-                wallet.withdraw(wallet_transaction.amount)
+                wallet.withdraw(credited_amount)
 
-                logger.info(f"Credited {wallet_transaction.amount} to savings goal {goal.name}")
+                logger.info(f"Credited {credited_amount} to savings goal {goal.name} (gross {wallet_transaction.amount}, fees {wallet_transaction.total_fee})")
 
             elif payment_link.link_type == 'event' and payment_link.savings_goal:
                 # Event link with linked goal
                 goal = payment_link.savings_goal
 
-                goal.amount += wallet_transaction.amount
+                goal.amount += credited_amount
                 goal.save(update_fields=['amount', 'updated_at'])
 
                 SavingsGoalTransaction.objects.create(
                     goal=goal,
                     transaction_type='contribution',
-                    amount=wallet_transaction.amount,
+                    amount=credited_amount,
                     description=f"Contribution for {payment_link.event_name} from {sender_name or 'Anonymous'}",
                     goal_current_amount=goal.amount
                 )
 
                 wallet = payment_link.user.wallet
-                wallet.withdraw(wallet_transaction.amount)
+                wallet.withdraw(credited_amount)
 
-                logger.info(f"Credited {wallet_transaction.amount} to event goal {goal.name}")
+                logger.info(f"Credited {credited_amount} to event goal {goal.name} (gross {wallet_transaction.amount}, fees {wallet_transaction.total_fee})")
 
             else:
-                # Wallet funding or event without goal - money stays in wallet
-                logger.info(f"Payment link contribution stays in wallet: {wallet_transaction.amount}")
+                # Wallet funding or event without goal - net amount stays in wallet
+                logger.info(f"Payment link contribution stays in wallet: {credited_amount} (gross {wallet_transaction.amount}, fees {wallet_transaction.total_fee})")
 
             # Mark as used if one-time use
             if payment_link.one_time_use:
@@ -295,49 +299,57 @@ def _complete_contribution(contribution, wallet_transaction):
     """
     payment_link = contribution.payment_link
     sender_name = contribution.contributor_name
+    credited_amount = wallet_transaction.net_amount or wallet_transaction.amount
 
     with transaction.atomic():
         contribution.status = 'completed'
         contribution.wallet_transaction = wallet_transaction
-        contribution.save(update_fields=['status', 'wallet_transaction', 'updated_at'])
+        contribution.commission_amount = wallet_transaction.commission_amount
+        contribution.vat_amount = wallet_transaction.vat_amount
+        contribution.total_fee = wallet_transaction.total_fee
+        contribution.net_amount = credited_amount
+        contribution.save(update_fields=[
+            'status', 'wallet_transaction', 'commission_amount',
+            'vat_amount', 'total_fee', 'net_amount', 'updated_at'
+        ])
 
-        # Route money to savings goal if applicable
+        # Route money to savings goal if applicable (use net amount)
         if payment_link.link_type == 'savings_goal' and payment_link.savings_goal:
             goal = payment_link.savings_goal
-            goal.amount += contribution.amount
+            goal.amount += credited_amount
             goal.save(update_fields=['amount', 'updated_at'])
 
             SavingsGoalTransaction.objects.create(
                 goal=goal,
                 transaction_type='contribution',
-                amount=contribution.amount,
+                amount=credited_amount,
                 description=f"Contribution from {sender_name or 'Anonymous'} via payment link",
                 goal_current_amount=goal.amount
             )
 
             wallet = payment_link.user.wallet
-            wallet.withdraw(contribution.amount)
-            logger.info(f"Credited {contribution.amount} to savings goal {goal.name}")
+            wallet.withdraw(credited_amount)
+            logger.info(f"Credited {credited_amount} to savings goal {goal.name}")
 
         elif payment_link.link_type == 'event' and payment_link.savings_goal:
             goal = payment_link.savings_goal
-            goal.amount += contribution.amount
+            goal.amount += credited_amount
             goal.save(update_fields=['amount', 'updated_at'])
 
             SavingsGoalTransaction.objects.create(
                 goal=goal,
                 transaction_type='contribution',
-                amount=contribution.amount,
+                amount=credited_amount,
                 description=f"Contribution for {payment_link.event_name} from {sender_name or 'Anonymous'}",
                 goal_current_amount=goal.amount
             )
 
             wallet = payment_link.user.wallet
-            wallet.withdraw(contribution.amount)
-            logger.info(f"Credited {contribution.amount} to event goal {goal.name}")
+            wallet.withdraw(credited_amount)
+            logger.info(f"Credited {credited_amount} to event goal {goal.name}")
 
         else:
-            logger.info(f"Payment link contribution stays in wallet: {contribution.amount}")
+            logger.info(f"Payment link contribution stays in wallet: {credited_amount}")
 
         # Mark as used if one-time use
         if payment_link.one_time_use:

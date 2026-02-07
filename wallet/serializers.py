@@ -25,7 +25,10 @@ class WalletTransactionSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'wallet_account_number', 'transaction_type', 'amount', 'status',
             'reference', 'external_reference', 'description',
-            'sender_name', 'sender_account', 'created_at', 'updated_at'
+            'sender_name', 'sender_account',
+            'fee_amount', 'vat_amount', 'emtl_amount', 'commission_amount',
+            'total_fee', 'net_amount',
+            'created_at', 'updated_at'
         ]
 
 
@@ -37,7 +40,9 @@ class PaymentLinkContributionSerializer(serializers.ModelSerializer):
         model = PaymentLinkContribution
         fields = [
             'id', 'amount', 'contributor_name', 'contributor_email',
-            'message', 'status', 'created_at'
+            'message', 'status',
+            'commission_amount', 'vat_amount', 'total_fee', 'net_amount',
+            'created_at'
         ]
         read_only_fields = fields
 

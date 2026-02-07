@@ -21,6 +21,7 @@ from .views_v2_9psb import (
     NotificationRequeryAPIView,
     GetWalletByBVNAPIView,
     WalletUpgradeFileAPIView,
+    FeePreviewAPIView,
 )
 
 urlpatterns = [
@@ -71,4 +72,7 @@ urlpatterns = [
 
     # Test Case 17: Wallet Upgrade with File Upload
     path('upgrade/file', WalletUpgradeFileAPIView.as_view(), name='wallet-upgrade-file'),
+
+    # Fee Preview
+    path('fees/preview', FeePreviewAPIView.as_view(), name='fee-preview'),
 ]
