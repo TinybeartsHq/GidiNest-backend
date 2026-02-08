@@ -82,6 +82,7 @@ class PaymentLinkAdmin(admin.ModelAdmin):
     search_fields = ('token', 'user__email', 'event_name', 'savings_goal__name')
     list_filter = ('link_type', 'is_active', 'show_contributors', 'created_at')
     readonly_fields = ('id', 'token', 'created_at', 'updated_at', 'total_raised_display', 'contributor_count_display')
+    raw_id_fields = ('user', 'savings_goal')
 
     fieldsets = (
         ('Basic Information', {
