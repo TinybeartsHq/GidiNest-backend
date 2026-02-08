@@ -40,6 +40,10 @@ app.conf.beat_schedule = {
         'task': 'savings.tasks.calculate_interest_for_goals',
         'schedule': crontab(minute=30, hour=0),  # Run daily at 12:30 AM UTC
     },
+    'nudge-users-without-wallet-hourly': {
+        'task': 'account.tasks.nudge_users_without_wallet',
+        'schedule': crontab(minute=0),  # Run every hour at :00
+    },
 }
 
 # Optional: Configure timezone for scheduled tasks

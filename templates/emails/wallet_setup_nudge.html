@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Complete Your Wallet Setup</title>
+  <style>
+    body {
+      background-color: #f3f4f6;
+      margin: 0;
+      padding: 0;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      color: #333;
+    }
+    .email-wrapper {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 40px 20px;
+    }
+    .email-container {
+      max-width: 620px;
+      width: 100%;
+      background-color: #ffffff;
+      padding: 40px 30px;
+      border-radius: 12px;
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.06);
+    }
+    h2 {
+      color: #b3508b;
+      font-size: 26px;
+      margin-bottom: 20px;
+    }
+    p {
+      font-size: 16px;
+      line-height: 1.65;
+      margin: 16px 0;
+    }
+    .highlight {
+      font-weight: 600;
+      color: #b3508b;
+    }
+    .feature-list {
+      margin: 20px 0;
+      padding-left: 0;
+      list-style: none;
+    }
+    .feature-list li {
+      font-size: 16px;
+      line-height: 1.65;
+      padding: 6px 0;
+      padding-left: 24px;
+      position: relative;
+    }
+    .feature-list li::before {
+      content: "\2713";
+      color: #b3508b;
+      font-weight: bold;
+      position: absolute;
+      left: 0;
+    }
+    .cta-button {
+      display: inline-block;
+      margin-top: 30px;
+      padding: 14px 28px;
+      background-color: #b3508b;
+      color: #ffffff;
+      text-decoration: none;
+      border-radius: 6px;
+      font-weight: 600;
+      font-size: 16px;
+      transition: background-color 0.3s ease;
+    }
+    .cta-button:hover {
+      background-color: #9a3f77;
+    }
+    .footer {
+      margin-top: 40px;
+      font-size: 13px;
+      color: #888;
+      text-align: center;
+    }
+    @media (max-width: 640px) {
+      .email-container {
+        padding: 30px 20px;
+      }
+      h2 {
+        font-size: 22px;
+      }
+      .cta-button {
+        width: 100%;
+        text-align: center;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="email-wrapper">
+    <div class="email-container">
+      <h2>Hey {{ first_name }}, your nest is waiting!</h2>
+
+      <p>
+        We noticed you joined <span class="highlight">Gidinest</span> but haven't set up your wallet yet. You're just one step away from unlocking everything we built for you.
+      </p>
+
+      <p>
+        Complete your quick verification and you'll get access to:
+      </p>
+
+      <ul class="feature-list">
+        <li>Your own secure wallet with a dedicated account number</li>
+        <li>Savings goals to plan for what matters most</li>
+        <li>Payment links to receive funds from anyone</li>
+        <li>A supportive community of women building their financial future</li>
+      </ul>
+
+      <p>
+        It only takes a minute — just verify your BVN and your wallet is ready to go.
+      </p>
+
+      <a href="https://app.gidinest.com/kyc" class="cta-button">Complete Your Setup</a>
+
+      <p style="margin-top: 30px;">
+        Need help? Just reply to this email or reach out to our support team. We're here for you.
+      </p>
+
+      <p>
+        Warmly,<br/>
+        The Gidinest Team
+      </p>
+
+      <div class="footer">
+        &copy; {{ year }} Gidinest. All rights reserved.
+      </div>
+    </div>
+  </div>
+</body>
+</html>

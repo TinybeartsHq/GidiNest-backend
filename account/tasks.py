@@ -86,3 +86,77 @@ def sync_users_by_emails_task(emails):
     )
 
     return results
+
+
+@shared_task(name='account.tasks.nudge_users_without_wallet')
+def nudge_users_without_wallet():
+    """
+    Find users who signed up ~24 hours ago but still have no wallet.
+    Send them a friendly email + in-app notification to complete KYC.
+
+    Runs hourly via Celery beat. The 24-25 hour window ensures each user
+    is only caught once, and the nudge_wallet_setup_sent flag prevents duplicates.
+    """
+    from datetime import timedelta
+    from django.utils import timezone
+    from account.models.users import UserModel
+    from wallet.models import Wallet
+    from notification.helper.notifications import notify_wallet_setup_nudge
+    from notification.helper.email import MailClient
+
+    now = timezone.now()
+    window_start = now - timedelta(hours=25)
+    window_end = now - timedelta(hours=24)
+
+    # Users who signed up 24-25 hours ago, haven't been nudged, and have no wallet
+    users = (
+        UserModel.objects
+        .filter(
+            created_at__gte=window_start,
+            created_at__lte=window_end,
+            nudge_wallet_setup_sent=False,
+            is_active=True,
+        )
+        .exclude(
+            id__in=Wallet.objects.values_list('user_id', flat=True)
+        )
+    )
+
+    nudged_count = 0
+    failed_count = 0
+    mail_client = MailClient()
+
+    for user in users:
+        try:
+            first_name = user.first_name or "there"
+
+            # Send email
+            mail_client.send_email(
+                to_email=user.email,
+                subject="Your Gidinest wallet is waiting for you!",
+                template_name='emails/wallet_setup_nudge.html',
+                context={
+                    'first_name': first_name,
+                    'year': now.year,
+                },
+                to_name=user.get_full_name() or user.email,
+            )
+
+            # Create in-app notification
+            notify_wallet_setup_nudge(user)
+
+            # Mark as nudged
+            user.nudge_wallet_setup_sent = True
+            user.save(update_fields=['nudge_wallet_setup_sent'])
+
+            nudged_count += 1
+        except Exception:
+            failed_count += 1
+            logger.exception(f"Failed to send wallet setup nudge to {user.email}")
+
+    logger.info(
+        f"Wallet setup nudge task completed. "
+        f"Nudged: {nudged_count}, Failed: {failed_count}"
+    )
+
+    return {'nudged': nudged_count, 'failed': failed_count}

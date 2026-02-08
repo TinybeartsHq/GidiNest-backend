@@ -40,6 +40,7 @@ class Notification(models.Model):
         ('account_upgraded', 'Account Upgraded'),
         ('security_alert', 'Security Alert'),
         ('system_announcement', 'System Announcement'),
+        ('wallet_setup_nudge', 'Wallet Setup Nudge'),
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

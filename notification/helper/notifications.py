@@ -262,3 +262,17 @@ def notify_security_alert(user, alert_message):
         data={},
         action_url='/profile/security'
     )
+
+
+# Onboarding Nudge Helpers
+def notify_wallet_setup_nudge(user):
+    """Nudge user who signed up but hasn't created a wallet yet"""
+    first_name = user.first_name or "there"
+    return create_notification(
+        user=user,
+        title="Complete Your Wallet Setup",
+        message=f"Hey {first_name}, you're almost there! Complete your verification to unlock your wallet and start building your nest.",
+        notification_type='wallet_setup_nudge',
+        action_url='/kyc',
+        send_push=False,
+    )

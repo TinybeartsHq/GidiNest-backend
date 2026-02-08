@@ -91,6 +91,9 @@ class UserModel(BaseModel, AbstractBaseUser,PermissionsMixin):
     email_verified_at = models.DateTimeField(null=True, blank=True, help_text="Timestamp when email was verified")
     phone_verified_at = models.DateTimeField(null=True, blank=True, help_text="Timestamp when phone was verified")
 
+    # Nudge tracking
+    nudge_wallet_setup_sent = models.BooleanField(default=False, help_text="Whether wallet setup nudge has been sent")
+
     # V2 Mobile - Passcode Authentication (6-digit)
     passcode_hash = models.CharField(null=True, blank=True, max_length=255, help_text="Hashed 6-digit passcode for quick login")
     passcode_set = models.BooleanField(default=False, help_text="Whether user has set a passcode")
