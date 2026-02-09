@@ -8,6 +8,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django.db import transaction
+from django.core.cache import cache
 from django.core.exceptions import ObjectDoesNotExist
 from core.helpers.response import success_response, validation_error_response, error_response
 from .models import SavingsGoalModel, SavingsGoalTransaction
@@ -173,6 +174,9 @@ class BatchCreateGoalsAPIView(APIView):
                 'errors': errors,
                 'created_count': len(created_goals)
             })
+
+        # Invalidate dashboard cache so new goals show immediately
+        cache.delete(f'dashboard_{request.user.id}')
 
         serializer = SavingsGoalSerializer(created_goals, many=True)
         return success_response(
@@ -359,6 +363,9 @@ class GoalsListCreateAPIView(APIView):
         if serializer.is_valid():
             goal = serializer.save(user=request.user)
 
+            # Invalidate dashboard cache so new goal shows immediately
+            cache.delete(f'dashboard_{request.user.id}')
+
             # Send notification
             try:
                 notify_goal_created(
@@ -480,6 +487,7 @@ class GoalDetailAPIView(APIView):
 
         goal_name = goal.name
         goal.delete()
+        cache.delete(f'dashboard_{request.user.id}')
         return success_response(
             message=f"Savings goal '{goal_name}' deleted successfully"
         )
@@ -585,6 +593,9 @@ class GoalFundAPIView(APIView):
                     description=description or f"Funded from wallet",
                     goal_current_amount=goal.amount
                 )
+
+            # Invalidate dashboard cache
+            cache.delete(f'dashboard_{request.user.id}')
 
             # Calculate progress
             progress = (float(goal.amount) / float(goal.target_amount) * 100) if goal.target_amount > 0 else 0
@@ -756,6 +767,9 @@ class GoalWithdrawAPIView(APIView):
                     description=description or f"Withdrawn to wallet",
                     goal_current_amount=goal.amount
                 )
+
+            # Invalidate dashboard cache
+            cache.delete(f'dashboard_{request.user.id}')
 
             # Send notification
             try:
