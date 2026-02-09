@@ -8,7 +8,7 @@ urlpatterns = [
 
     path('goals/contribute-withdraw/', SavingsGoalContributeWithdrawAPIView.as_view(), name='savings_goal_contribute_withdraw'),
     path('history/all/', UserAllSavingsHistoryAPIView.as_view(), name='all_savings_history'),
-    path('history/<uuid:goal_id>/', SpecificSavingsGoalHistoryAPIView.as_view(), name='specific_savings_history'),
+    path('history/<int:goal_id>/', SpecificSavingsGoalHistoryAPIView.as_view(), name='specific_savings_history'),
 
     path('dashboard-analytics/', SavingsDashboardAnalyticsAPIView.as_view(), name='savings_dashboard_analytics'),
 ]

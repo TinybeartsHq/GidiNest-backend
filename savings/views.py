@@ -6,6 +6,7 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from core.helpers.response import success_response, validation_error_response, error_response
+from django.core.cache import cache
 
 logger = logging.getLogger(__name__)
 from wallet.models import Wallet, WalletTransaction
@@ -47,6 +48,8 @@ class SavingsGoalAPIView(APIView):
         if serializer.is_valid():
             # Associate the goal with the authenticated user
             serializer.save(user=request.user)
+            # Invalidate dashboard cache so new goal shows immediately
+            cache.delete(f'dashboard_{request.user.id}')
             return success_response(message= "Savings goal created successfully", data = serializer.data )
         return validation_error_response(serializer.errors)
 
@@ -61,6 +64,7 @@ class SavingsGoalAPIView(APIView):
             if(goal.amount > 0):
                 return error_response("Cannot delete a savings goal with a non-zero amount. Please withdraw funds before deleting.")
             goal.delete()
+            cache.delete(f'dashboard_{request.user.id}')
             return success_response(message="Savings goal deleted successfully.")
         except SavingsGoalModel.DoesNotExist:
             return Response(
@@ -147,6 +151,9 @@ class SavingsGoalContributeWithdrawAPIView(APIView):
                     description=description,
                     goal_current_amount=goal.amount # Snapshot of goal's amount after transaction
                 )
+
+                # Invalidate dashboard cache
+                cache.delete(f'dashboard_{request.user.id}')
 
                 return success_response(message = f"{transaction_type.capitalize()} successful for goal: {goal.name}")
 

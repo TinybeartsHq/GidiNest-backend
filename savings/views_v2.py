@@ -159,8 +159,6 @@ class BatchCreateGoalsAPIView(APIView):
                         target_amount=target_amount,
                         amount=Decimal('0'),
                         status='active',
-                        # Store template metadata
-                        description=template_info.get('description', '')
                     )
                     created_goals.append(goal)
                 except Exception as e:
@@ -837,7 +835,7 @@ class GoalTransactionsAPIView(APIView):
                 status_code=status.HTTP_404_NOT_FOUND
             )
 
-        transactions = goal.transactions.all().order_by('-created_at')
+        transactions = goal.transactions.all().order_by('-timestamp')
         serializer = SavingsGoalTransactionSerializer(transactions, many=True)
 
         return success_response(

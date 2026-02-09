@@ -24,14 +24,14 @@ urlpatterns = [
     # GOALS CRUD
     # ==========================================
     path('goals', GoalsListCreateAPIView.as_view(), name='v2-goals-list'),  # GET, POST
-    path('goals/<uuid:goal_id>', GoalDetailAPIView.as_view(), name='v2-goal-detail'),  # GET, PUT, DELETE
+    path('goals/<int:goal_id>', GoalDetailAPIView.as_view(), name='v2-goal-detail'),  # GET, PUT, DELETE
 
     # ==========================================
     # GOAL OPERATIONS
     # ==========================================
-    path('goals/<uuid:goal_id>/fund', GoalFundAPIView.as_view(), name='v2-goal-fund'),  # POST
-    path('goals/<uuid:goal_id>/withdraw', GoalWithdrawAPIView.as_view(), name='v2-goal-withdraw'),  # POST
-    path('goals/<uuid:goal_id>/transactions', GoalTransactionsAPIView.as_view(), name='v2-goal-transactions'),  # GET
+    path('goals/<int:goal_id>/fund', GoalFundAPIView.as_view(), name='v2-goal-fund'),  # POST
+    path('goals/<int:goal_id>/withdraw', GoalWithdrawAPIView.as_view(), name='v2-goal-withdraw'),  # POST
+    path('goals/<int:goal_id>/transactions', GoalTransactionsAPIView.as_view(), name='v2-goal-transactions'),  # GET
 
     # ==========================================
     # GOAL TEMPLATES & BATCH CREATION
