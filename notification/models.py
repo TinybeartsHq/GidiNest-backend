@@ -35,6 +35,11 @@ class Notification(models.Model):
         ('challenge_completed', 'Challenge Completed'),
         ('group_joined', 'Group Joined'),
 
+        # Gifting related
+        ('gift_received', 'Gift Received'),
+        ('gift_milestone', 'Gift Milestone'),
+        ('fund_target_reached', 'Fund Target Reached'),
+
         # System related
         ('verification_completed', 'Verification Completed'),
         ('account_upgraded', 'Account Upgraded'),

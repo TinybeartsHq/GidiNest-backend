@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Gift Confirmed - Thank You!</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #f8f9fa;
+      color: #333;
+      margin: 0;
+      padding: 0;
+    }
+    .email-container {
+      max-width: 600px;
+      margin: 40px auto;
+      background-color: #ffffff;
+      padding: 30px;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+    }
+    h2 {
+      color: #b3508b;
+    }
+    .success-icon {
+      text-align: center;
+      font-size: 48px;
+      margin: 20px 0;
+    }
+    .gift-box {
+      background-color: #f0fdf4;
+      padding: 20px;
+      border-radius: 8px;
+      margin: 20px 0;
+      text-align: center;
+    }
+    .amount {
+      font-size: 28px;
+      font-weight: bold;
+      color: #16a34a;
+    }
+    .reference {
+      background-color: #f3f4f6;
+      padding: 10px 15px;
+      border-radius: 6px;
+      font-family: monospace;
+      font-size: 13px;
+      color: #666;
+      margin: 15px 0;
+    }
+    .thank-you-box {
+      background-color: #fdf2f8;
+      padding: 15px;
+      border-radius: 8px;
+      margin: 15px 0;
+    }
+    .footer {
+      text-align: center;
+      color: #888;
+      font-size: 12px;
+      margin-top: 30px;
+    }
+  </style>
+</head>
+<body>
+  <div class="email-container">
+    <div class="success-icon">&#10003;</div>
+    <h2 style="text-align: center;">Gift Confirmed!</h2>
+
+    <p>Hi {{ to_name }},</p>
+    <p>Your gift to <strong>"{{ fund_name }}"</strong> ({{ mother_name }}'s fund) has been confirmed.</p>
+
+    <div class="gift-box">
+      <p style="margin: 0 0 5px 0; color: #666;">You gifted</p>
+      <p class="amount">{{ amount }}</p>
+    </div>
+
+    <div class="reference">
+      <strong>Reference:</strong> {{ reference }}
+    </div>
+
+    {% if thank_you_message %}
+    <div class="thank-you-box">
+      <p style="margin: 0 0 5px 0; color: #666;"><strong>A message from {{ mother_name }}:</strong></p>
+      <p style="margin: 0;">"{{ thank_you_message }}"</p>
+    </div>
+    {% endif %}
+
+    <p>Thank you for celebrating this special moment. Your generosity means the world.</p>
+
+    <div class="footer">
+      <p>GidiNest - Celebrating new beginnings together</p>
+    </div>
+  </div>
+</body>
+</html>

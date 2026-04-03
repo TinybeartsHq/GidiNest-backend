@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>New Gift Received!</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #f8f9fa;
+      color: #333;
+      margin: 0;
+      padding: 0;
+    }
+    .email-container {
+      max-width: 600px;
+      margin: 40px auto;
+      background-color: #ffffff;
+      padding: 30px;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+    }
+    h2 {
+      color: #b3508b;
+    }
+    .gift-box {
+      background-color: #fdf2f8;
+      padding: 20px;
+      border-radius: 8px;
+      margin: 20px 0;
+      text-align: center;
+    }
+    .amount {
+      font-size: 28px;
+      font-weight: bold;
+      color: #b3508b;
+    }
+    .progress-section {
+      background-color: #f0f8ff;
+      padding: 15px;
+      border-radius: 8px;
+      margin: 15px 0;
+    }
+    .message-box {
+      background-color: #fffbeb;
+      padding: 15px;
+      border-radius: 8px;
+      margin: 15px 0;
+      font-style: italic;
+    }
+    .footer {
+      text-align: center;
+      color: #888;
+      font-size: 12px;
+      margin-top: 30px;
+    }
+  </style>
+</head>
+<body>
+  <div class="email-container">
+    <h2>New Gift Received!</h2>
+    <p>Hi {{ to_name }},</p>
+    <p><strong>{{ contributor_name }}</strong> just sent a gift to your fund <strong>"{{ fund_name }}"</strong>.</p>
+
+    <div class="gift-box">
+      <p style="margin: 0 0 5px 0; color: #666;">Gift Amount</p>
+      <p class="amount">{{ amount }}</p>
+    </div>
+
+    {% if message %}
+    <div class="message-box">
+      <p style="margin: 0 0 5px 0; color: #666; font-style: normal;"><strong>Message from {{ contributor_name }}:</strong></p>
+      <p style="margin: 0;">"{{ message }}"</p>
+    </div>
+    {% endif %}
+
+    <div class="progress-section">
+      <p style="margin: 0;"><strong>Total Raised:</strong> {{ total_raised }}</p>
+      <p style="margin: 5px 0 0 0;"><strong>Target:</strong> {{ target_amount }}</p>
+    </div>
+
+    <p>Log in to your GidiNest dashboard to see all your gifts and manage your fund.</p>
+
+    <div class="footer">
+      <p>GidiNest - Celebrating new beginnings together</p>
+    </div>
+  </div>
+</body>
+</html>

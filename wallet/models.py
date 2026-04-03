@@ -611,10 +611,22 @@ class FeeConfiguration(BaseModel):
         help_text="Fixed EMTL/Stamp Duty charge (e.g., ₦50)"
     )
 
-    # Payment Link commission
+    # Payment Link commission (legacy — being replaced by gifting fees)
     payment_link_commission_rate = models.DecimalField(
         max_digits=5, decimal_places=4, default=Decimal('0.0500'),
         help_text="Payment link commission rate as decimal (0.05 = 5%)"
+    )
+
+    # Gifting fees (Phase 1)
+    gift_fee_rate = models.DecimalField(
+        max_digits=5, decimal_places=4, default=Decimal('0.0150'),
+        help_text="Gift fee rate as decimal (0.015 = 1.5%)"
+    )
+
+    # Disbursement fees (Phase 2)
+    disbursement_fee_rate = models.DecimalField(
+        max_digits=5, decimal_places=4, default=Decimal('0.0100'),
+        help_text="Withdrawal/disbursement fee rate as decimal (0.01 = 1%)"
     )
 
     # Activation
@@ -687,6 +699,14 @@ class PlatformWallet(BaseModel):
         max_digits=15, decimal_places=2, default=Decimal('0.00'),
         help_text="Lifetime total of payment link commissions collected"
     )
+    total_gift_fees = models.DecimalField(
+        max_digits=15, decimal_places=2, default=Decimal('0.00'),
+        help_text="Lifetime total of gifting fees collected (1.5%)"
+    )
+    total_disbursement_fees = models.DecimalField(
+        max_digits=15, decimal_places=2, default=Decimal('0.00'),
+        help_text="Lifetime total of disbursement fees collected (1%)"
+    )
 
     class Meta:
         verbose_name = "Platform Wallet"
@@ -696,12 +716,13 @@ class PlatformWallet(BaseModel):
         return f"Platform Wallet: ₦{self.balance:,.2f}"
 
     def deposit(self, fee_amount=Decimal('0.00'), vat_amount=Decimal('0.00'),
-                emtl_amount=Decimal('0.00'), commission_amount=Decimal('0.00')):
+                emtl_amount=Decimal('0.00'), commission_amount=Decimal('0.00'),
+                gift_fee_amount=Decimal('0.00'), disbursement_fee_amount=Decimal('0.00')):
         """
         Deposit fee revenue into the platform wallet atomically.
         Tracks each fee component separately for reporting.
         """
-        total = fee_amount + vat_amount + emtl_amount + commission_amount
+        total = fee_amount + vat_amount + emtl_amount + commission_amount + gift_fee_amount + disbursement_fee_amount
         if total <= 0:
             return
 
@@ -712,9 +733,12 @@ class PlatformWallet(BaseModel):
             pw.total_vat = F('total_vat') + vat_amount
             pw.total_emtl = F('total_emtl') + emtl_amount
             pw.total_commission = F('total_commission') + commission_amount
+            pw.total_gift_fees = F('total_gift_fees') + gift_fee_amount
+            pw.total_disbursement_fees = F('total_disbursement_fees') + disbursement_fee_amount
             pw.save(update_fields=[
                 'balance', 'total_transfer_fees', 'total_vat',
-                'total_emtl', 'total_commission', 'updated_at'
+                'total_emtl', 'total_commission',
+                'total_gift_fees', 'total_disbursement_fees', 'updated_at'
             ])
             pw.refresh_from_db()
             self.balance = pw.balance

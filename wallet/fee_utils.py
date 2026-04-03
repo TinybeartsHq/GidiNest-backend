@@ -24,6 +24,24 @@ class TransferFeeBreakdown:
 
 
 @dataclass
+class GiftFeeBreakdown:
+    """Fee breakdown for baby fund gifts — flat 1.5% fee."""
+    gross_amount: Decimal
+    gift_fee: Decimal
+    total_fees: Decimal
+    net_amount: Decimal
+
+
+@dataclass
+class DisbursementFeeBreakdown:
+    """Fee breakdown for fund withdrawals — flat 1% fee."""
+    gross_amount: Decimal
+    disbursement_fee: Decimal
+    total_fees: Decimal
+    net_amount: Decimal
+
+
+@dataclass
 class PaymentLinkFeeBreakdown:
     """Fee breakdown for payment link contributions."""
     gross_amount: Decimal
@@ -167,7 +185,8 @@ def settle_fees_to_platform(fees):
     """
     Settle collected fees into the platform wallet.
 
-    Accepts either TransferFeeBreakdown or PaymentLinkFeeBreakdown.
+    Accepts TransferFeeBreakdown, PaymentLinkFeeBreakdown,
+    GiftFeeBreakdown, or DisbursementFeeBreakdown.
     Skips if total fees are zero.
     """
     if fees.total_fees <= 0:
@@ -178,7 +197,11 @@ def settle_fees_to_platform(fees):
     try:
         pw = PlatformWallet.get_instance()
 
-        if isinstance(fees, PaymentLinkFeeBreakdown):
+        if isinstance(fees, GiftFeeBreakdown):
+            pw.deposit(gift_fee_amount=fees.gift_fee)
+        elif isinstance(fees, DisbursementFeeBreakdown):
+            pw.deposit(disbursement_fee_amount=fees.disbursement_fee)
+        elif isinstance(fees, PaymentLinkFeeBreakdown):
             pw.deposit(
                 commission_amount=fees.commission,
                 vat_amount=fees.vat_on_commission,
@@ -191,3 +214,70 @@ def settle_fees_to_platform(fees):
             )
     except Exception:
         logger.exception("Failed to settle fees to platform wallet")
+
+
+# ------------------------------------------------------------------
+# Gifting fees (Phase 1 & 2)
+# ------------------------------------------------------------------
+
+def calculate_gift_fees(amount, config=None) -> GiftFeeBreakdown:
+    """
+    Calculate fees for a baby fund gift.
+
+    Fee structure: flat 1.5% of gross amount.
+    No VAT, no EMTL — just the platform commission.
+
+    Args:
+        amount: Gross gift amount
+        config: Optional FeeConfiguration (uses gift_fee_rate field)
+
+    Returns:
+        GiftFeeBreakdown dataclass
+    """
+    if config is None:
+        from wallet.models import FeeConfiguration
+        config = FeeConfiguration.get_active()
+
+    amount = Decimal(str(amount))
+    rate = getattr(config, 'gift_fee_rate', Decimal('0.015'))
+    gift_fee = _round(amount * rate)
+    total_fees = gift_fee
+    net_amount = _round(amount - total_fees)
+
+    return GiftFeeBreakdown(
+        gross_amount=amount,
+        gift_fee=gift_fee,
+        total_fees=total_fees,
+        net_amount=net_amount,
+    )
+
+
+def calculate_disbursement_fees(amount, config=None) -> DisbursementFeeBreakdown:
+    """
+    Calculate fees for a fund withdrawal (disbursement to bank).
+
+    Fee structure: flat 1% of withdrawal amount.
+
+    Args:
+        amount: Withdrawal amount
+        config: Optional FeeConfiguration (uses disbursement_fee_rate field)
+
+    Returns:
+        DisbursementFeeBreakdown dataclass
+    """
+    if config is None:
+        from wallet.models import FeeConfiguration
+        config = FeeConfiguration.get_active()
+
+    amount = Decimal(str(amount))
+    rate = getattr(config, 'disbursement_fee_rate', Decimal('0.01'))
+    disbursement_fee = _round(amount * rate)
+    total_fees = disbursement_fee
+    net_amount = _round(amount - total_fees)
+
+    return DisbursementFeeBreakdown(
+        gross_amount=amount,
+        disbursement_fee=disbursement_fee,
+        total_fees=total_fees,
+        net_amount=net_amount,
+    )

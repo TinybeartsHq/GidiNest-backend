@@ -15,9 +15,15 @@ Including another URLconf
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 from django.contrib import admin
+from django.http import JsonResponse
 from django.urls import path, include
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView, SpectacularRedocView
 from account.admin_views import support_dashboard
+from gifting.views import PaystackWebhookAPIView
+
+
+def health(request):
+    return JsonResponse({"status": "ok"})
 
 
 admin.site.site_header = "Gidinest Internal Admin"
@@ -26,6 +32,7 @@ admin.site.index_title = "Welcome to Gidinest Admin"
 
 
 urlpatterns = [
+    path('health/', health),
     path('internal-admin/', admin.site.urls),
     path('internal-admin/support-dashboard/', support_dashboard, name='support_dashboard'),
 
@@ -61,4 +68,14 @@ urlpatterns = [
     path("api/v2/savings/", include("savings.urls_v2")),
     path("api/v2/community/", include("community.urls_v2")),
     path("api/v2/notifications/", include("notification.urls_v2")),
+
+    # ==========================================
+    # GIFTING (Baby Funds)
+    # ==========================================
+    path("api/v2/funds/", include("gifting.urls")),
+
+    # ==========================================
+    # WEBHOOKS
+    # ==========================================
+    path("api/webhooks/paystack/", PaystackWebhookAPIView.as_view(), name='paystack-webhook'),
 ]

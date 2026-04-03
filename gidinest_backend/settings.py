@@ -13,20 +13,17 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 from datetime import timedelta
 from pathlib import Path
 import os
-from decouple import Config, RepositoryEnv
-import pymysql
-pymysql.install_as_MySQLdb()
 
+from gidinest_backend.secrets_loader import secrets
 
-config = Config(RepositoryEnv('.env'))
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.getenv('SECRET_KEY', config('SECRET_KEY'))
+SECRET_KEY = secrets["SECRET_KEY"]
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = os.getenv('DEBUG', config('DEBUG', default=False, cast=bool))
+DEBUG = secrets.get("DEBUG", "False").lower() in ("true", "1", "yes")
 
 ALLOWED_HOSTS = [
     "api.gidinest.com",
@@ -63,6 +60,7 @@ INSTALLED_APPS = [
     'providers',
     'dashboard',  # V2 Mobile - Unified dashboard
     'transactions',  # V2 Mobile - Comprehensive transactions
+    'gifting',  # Baby funds + gifting via Paystack
 ]
 
 MIDDLEWARE = [
@@ -110,15 +108,18 @@ WSGI_APPLICATION = 'gidinest_backend.wsgi.application'
 
 
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.mysql',
-        'NAME': os.getenv('DB_NAME', config('DB_NAME')),  
-        'USER': os.getenv('DB_USER', config('DB_USER')),   
-        'PASSWORD': os.getenv('DB_PASSWORD', config('DB_PASSWORD')),
-        'HOST': os.getenv('DB_HOST', config('DB_HOST')), 
-        'PORT': '3306',          
+    "default": {
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": secrets["DB_NAME"],
+        "USER": secrets["DB_USER"],
+        "PASSWORD": secrets["DB_PASSWORD"],
+        "HOST": secrets["DB_HOST"],
+        "PORT": "5432",
     }
 }
+
+if not DEBUG:
+    DATABASES["default"]["OPTIONS"] = {"sslmode": "require"}
 
 
 # Password validation
@@ -176,12 +177,12 @@ AUTH_USER_MODEL = "account.UserModel"
 
 
 
-ZEPTOMAIL_API_KEY = os.getenv('ZEPTOMAIL_API_KEY', config('ZEPTOMAIL_API_KEY'))
+ZEPTOMAIL_API_KEY = secrets["ZEPTOMAIL_API_KEY"]
 
 ZEPTOMAIL_FROM_EMAIL = "noreply@gidinest.com"
 
 
-PREMBLY_API_KEY=os.getenv('PREMBLY_API_KEY', config('PREMBLY_API_KEY'))
+PREMBLY_API_KEY = secrets["PREMBLY_API_KEY"]
 
 
 
@@ -402,17 +403,16 @@ SAVINGS_TEMPLATES=["Delivery Day Fund","Baby Essentials","Immunization Trip"]
 
 
 
-EMBEDLY_API_KEY_DEV=os.getenv('EMBEDLY_API_KEY_DEV', config('EMBEDLY_API_KEY_DEV')) 
-EMBEDLY_ORGANIZATION_ID_DEV=os.getenv('EMBEDLY_ORGANIZATION_ID_DEV', config('EMBEDLY_ORGANIZATION_ID_DEV')) 
-
-
-EMBEDLY_ORGANIZATION_ID_PRODUCTION=os.getenv('EMBEDLY_ORGANIZATION_ID_PRODUCTION', config('EMBEDLY_ORGANIZATION_ID_PRODUCTION')) 
-EMBEDLY_API_KEY_PRODUCTION=os.getenv('EMBEDLY_API_KEY_PRODUCTION', config('EMBEDLY_API_KEY_PRODUCTION'))
-EMBEDLY_CUSTOMER_TYPE_ID_INDIVIDUAL=os.getenv('EMBEDLY_CUSTOMER_TYPE_ID_INDIVIDUAL', config('EMBEDLY_CUSTOMER_TYPE_ID_INDIVIDUAL'))
-EMBEDLY_COUNTRY_ID_NIGERIA=os.getenv('EMBEDLY_COUNTRY_ID_NIGERIA', config('EMBEDLY_COUNTRY_ID_NIGERIA')) 
-EMBEDLY_CURRENCY_ID_NGN = config('EMBEDLY_CURRENCY_ID_NGN', default='')
-BASE_URL = os.getenv('BASE_URL', 'https://app.gidinest.com')
-CUORAL_API_KEY=os.getenv('CUORAL_API_KEY', config('CUORAL_API_KEY'))   
+# Legacy providers (frozen — will be removed)
+EMBEDLY_API_KEY_DEV = secrets["EMBEDLY_API_KEY_DEV"]
+EMBEDLY_ORGANIZATION_ID_DEV = secrets["EMBEDLY_ORGANIZATION_ID_DEV"]
+EMBEDLY_ORGANIZATION_ID_PRODUCTION = secrets["EMBEDLY_ORGANIZATION_ID_PRODUCTION"]
+EMBEDLY_API_KEY_PRODUCTION = secrets["EMBEDLY_API_KEY_PRODUCTION"]
+EMBEDLY_CUSTOMER_TYPE_ID_INDIVIDUAL = secrets["EMBEDLY_CUSTOMER_TYPE_ID_INDIVIDUAL"]
+EMBEDLY_COUNTRY_ID_NIGERIA = secrets["EMBEDLY_COUNTRY_ID_NIGERIA"]
+EMBEDLY_CURRENCY_ID_NGN = secrets["EMBEDLY_CURRENCY_ID_NGN"]
+BASE_URL = secrets.get("BASE_URL", "https://app.gidinest.com")
+CUORAL_API_KEY = secrets["CUORAL_API_KEY"]   
 
 ACTIVATION_URL="https://app.gidinest.com/email/activation/"
 
@@ -437,13 +437,14 @@ CSRF_TRUSTED_ORIGINS = [
 ]
 
 
-PAYSTACK_SECRET_KEY=os.getenv('PAYSTACK_SECRET_KEY', config('PAYSTACK_SECRET_KEY'))
+PAYSTACK_SECRET_KEY = secrets["PAYSTACK_SECRET_KEY"]
+FRONTEND_URL = secrets.get("FRONTEND_URL", "https://gidinest.com")
 
 
 # Celery Configuration
 # =====================
-CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', config('CELERY_BROKER_URL', default='redis://localhost:6379/0'))
-CELERY_RESULT_BACKEND = os.getenv('CELERY_RESULT_BACKEND', config('CELERY_RESULT_BACKEND', default='redis://localhost:6379/0'))
+CELERY_BROKER_URL = secrets.get("CELERY_BROKER_URL", "redis://localhost:6379/0")
+CELERY_RESULT_BACKEND = secrets.get("CELERY_RESULT_BACKEND", "redis://localhost:6379/0")
 
 # Optional: Use django-celery-results for storing task results in database
 # CELERY_RESULT_BACKEND = 'django-db'
@@ -470,7 +471,7 @@ CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
 CACHES = {
     'default': {
         'BACKEND': 'django_redis.cache.RedisCache',
-        'LOCATION': os.getenv('REDIS_URL', config('REDIS_URL', default='redis://localhost:6379/1')),
+        'LOCATION': secrets.get("REDIS_URL", "redis://localhost:6379/1"),
         'OPTIONS': {
             'CLIENT_CLASS': 'django_redis.client.DefaultClient',
         },
@@ -581,6 +582,11 @@ LOGGING = {
             'level': 'INFO',
             'propagate': False,
         },
+        'gifting': {
+            'handlers': ['console', 'database'],
+            'level': 'INFO',
+            'propagate': False,
+        },
         'core': {
             'handlers': ['console', 'database'],
             'level': 'INFO',
@@ -668,6 +674,7 @@ JAZZMIN_SETTINGS = {
     # List of apps (and/or models) to base side menu ordering off of
     "order_with_respect_to": [
         "account",
+        "gifting",
         "wallet",
         "savings",
         "transactions",
@@ -720,6 +727,10 @@ JAZZMIN_SETTINGS = {
         "transactions.Transaction": "fas fa-file-invoice-dollar",
 
         "dashboard": "fas fa-tachometer-alt",
+
+        "gifting": "fas fa-gift",
+        "gifting.BabyFund": "fas fa-baby",
+        "gifting.Gift": "fas fa-gift",
 
         "community": "fas fa-users",
         "community.CommunityGroup": "fas fa-users",
