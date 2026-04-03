@@ -827,7 +827,7 @@ JAZZMIN_UI_TWEAKS = {
 # SECURITY HEADERS
 # ==============================================
 # HTTPS enforcement (enable when SSL is fully configured)
-SECURE_SSL_REDIRECT = not DEBUG
+SECURE_SSL_REDIRECT = False
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
 # HSTS (HTTP Strict Transport Security)
