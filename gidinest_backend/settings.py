@@ -25,15 +25,7 @@ SECRET_KEY = secrets["SECRET_KEY"]
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = secrets.get("DEBUG", "False").lower() in ("true", "1", "yes")
 
-ALLOWED_HOSTS = [
-    "api.gidinest.com",
-    "app.gidinest.com",
-    "gidinest.com",
-    "www.gidinest.com",
-    "167.99.120.170",  # Your DigitalOcean server IP
-    "localhost",
-    "127.0.0.1",
-]
+ALLOWED_HOSTS = secrets.get("ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
 
 
 # Application definition
