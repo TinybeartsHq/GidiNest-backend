@@ -23,11 +23,26 @@ jobs:
 
       - name: Build & Push to ECR
         run: |
+          IMAGE_TAG=${{ github.sha }}
           docker build -t gidinest-backend .
+          docker tag gidinest-backend:latest 922544547054.dkr.ecr.af-south-1.amazonaws.com/gidinest-backend:$IMAGE_TAG
           docker tag gidinest-backend:latest 922544547054.dkr.ecr.af-south-1.amazonaws.com/gidinest-backend:latest
+          docker push 922544547054.dkr.ecr.af-south-1.amazonaws.com/gidinest-backend:$IMAGE_TAG
           docker push 922544547054.dkr.ecr.af-south-1.amazonaws.com/gidinest-backend:latest
 
       - name: Deploy to Elastic Beanstalk
         run: |
-          pip install awsebcli
-          eb deploy gidinest-prod --region af-south-1
+          IMAGE_TAG=${{ github.sha }}
+          ZIP_FILE="deploy-$IMAGE_TAG.zip"
+          zip -r $ZIP_FILE . -x "*.git*" -x "node_modules/*"
+          aws s3 cp $ZIP_FILE s3://elasticbeanstalk-af-south-1-922544547054/$ZIP_FILE
+          aws elasticbeanstalk create-application-version \
+            --application-name gidinest-backend \
+            --version-label $IMAGE_TAG \
+            --source-bundle S3Bucket=elasticbeanstalk-af-south-1-922544547054,S3Key=$ZIP_FILE \
+            --region af-south-1
+          aws elasticbeanstalk update-environment \
+            --application-name gidinest-backend \
+            --environment-name gidinest-prod \
+            --version-label $IMAGE_TAG \
+            --region af-south-1
